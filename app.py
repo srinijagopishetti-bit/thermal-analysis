@@ -7,19 +7,14 @@ from PIL import Image
 st.set_page_config(page_title="AI Thermal Health Dashboard", layout="wide")
 
 st.title("🌡️ AI Thermal Health Assessment Dashboard")
-st.write("Upload a thermal image or take a live picture to process thermal heatmaps and health analysis.")
+st.write("Upload a thermal image or take a live photo using your phone camera for thermal health analysis.")
 
 # Sidebar Controls
 st.sidebar.header("⚙️ Settings & Options")
-input_mode = st.sidebar.radio("Select Input Source:", ["Upload File", "Take Live Photo"])
 selected_cmap = st.sidebar.selectbox("Choose Primary Heatmap Colormap:", ["jet", "inferno", "plasma", "viridis", "magma"])
 
-uploaded_file = None
-
-if input_mode == "Upload File":
-    uploaded_file = st.file_uploader("📷 Choose an image...", type=["jpg", "jpeg", "png", "webp"])
-else:
-    uploaded_file = st.camera_input("📸 Take a live thermal demo photo")
+# Standard File Uploader with Mobile Camera Trigger
+uploaded_file = st.file_uploader("📸 Tap below to Take Photo or Upload Image", type=["jpg", "jpeg", "png", "webp"])
 
 if uploaded_file is not None:
     try:
@@ -73,7 +68,7 @@ if uploaded_file is not None:
             st.pyplot(fig2)
             
         st.markdown("---")
-        st.subheader("📊 Thermal Metrics & AI Feature Analysis")
+        st.subheader("📊 Thermal Metrics & Analysis")
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Min - Max Temp", f"{min_temp}°C – {max_temp}°C")
         m2.metric("Average Temp", f"{avg_temp}°C")
@@ -86,7 +81,6 @@ if uploaded_file is not None:
         report_text = f"""======================================
      THERMAL ANALYSIS REPORT     
 ======================================
-🧠 Feature Extraction Engine : Deep Pixel Feature Analysis
 🌡️ Temperature Range        : {min_temp}°C – {max_temp}°C
 📊 Average Temperature      : {avg_temp}°C
 
@@ -98,14 +92,15 @@ if uploaded_file is not None:
 📌 OBSERVATION SUMMARY:"""
 
         if max_temp > 37.2 or lr_diff > 1.5:
-            report_text += "\n⚠️ STATUS: ABNORMAL PATTERN DETECTED\nHigh thermal variance or hotspot observed. Secondary clinical validation suggested."
-            st.error("🚨 **STATUS: ABNORMAL PATTERN DETECTED** — Thermal mapping identified high variance!")
+            report_text += "\n⚠️ STATUS: ABNORMAL PATTERN DETECTED\nHigh thermal variance or hotspot observed."
+            st.error("🚨 **STATUS: ABNORMAL PATTERN DETECTED**")
         else:
-            report_text += "\n✅ STATUS: NORMAL PATTERN\nThermal distribution is standard and uniform across regions."
-            st.success("✅ **STATUS: NORMAL PATTERN** — Thermal distribution is uniform.")
+            report_text += "\n✅ STATUS: NORMAL PATTERN\nThermal distribution is standard and uniform."
+            st.success("✅ **STATUS: NORMAL PATTERN**")
 
         st.code(report_text, language="markdown")
 
     except Exception as e:
-        st.error("⚠️ Error processing image. Please try another image or camera snapshot.")
+        st.error("⚠️ Error processing image. Please try another image.")
+        
         
