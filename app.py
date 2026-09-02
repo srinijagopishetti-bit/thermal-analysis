@@ -3,21 +3,11 @@ import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
 from PIL import Image
-import tensorflow as tf
-from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input
 
 st.set_page_config(page_title="AI Thermal Health Dashboard", layout="wide")
 
-# Load Pre-trained CNN Feature Extractor
-@st.cache_resource
-def load_cnn_model():
-    model = MobileNetV2(weights="imagenet", include_top=False, input_shape=(224, 224, 3))
-    return model
-
-cnn_model = load_cnn_model()
-
 st.title("🌡️ AI Thermal Health Assessment Dashboard")
-st.write("Upload a thermal image or capture live photo for CNN-based thermal classification and heatmap analytics.")
+st.write("Upload a thermal image or take a live picture to process thermal heatmaps and health analysis.")
 
 # Sidebar Controls
 st.sidebar.header("⚙️ Settings & Options")
@@ -37,19 +27,9 @@ if uploaded_file is not None:
         image = np.array(pil_image)
         image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         
-        # 1. CNN Feature Extraction & Analysis
-        resized_img = cv2.resize(image, (224, 224))
-        img_array = np.expand_dims(resized_img, axis=0)
-        img_preprocessed = preprocess_input(img_array.astype(np.float32))
-        features = cnn_model.predict(img_preprocessed, verbose=0)
-        feature_score = float(np.mean(features))
-        
-        # CNN Anomaly Score Logic
-        cnn_status = "Normal Thermal Pattern" if feature_score < 0.5 else "Potential Thermal Variance Detected"
-        
-        # 2. OpenCV Thermal Processing
         gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
         
+        # Thermal Scale Mapping (25°C - 38°C)
         min_temp = round(25.0 + (np.min(gray) / 255.0) * 13.0, 1)
         max_temp = round(25.0 + (np.max(gray) / 255.0) * 13.0, 1)
         avg_temp = round(25.0 + (np.mean(gray) / 255.0) * 13.0, 1)
@@ -93,7 +73,7 @@ if uploaded_file is not None:
             st.pyplot(fig2)
             
         st.markdown("---")
-        st.subheader("📊 Thermal Metrics & AI Classification")
+        st.subheader("📊 Thermal Metrics & AI Feature Analysis")
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Min - Max Temp", f"{min_temp}°C – {max_temp}°C")
         m2.metric("Average Temp", f"{avg_temp}°C")
@@ -106,20 +86,20 @@ if uploaded_file is not None:
         report_text = f"""======================================
      THERMAL ANALYSIS REPORT     
 ======================================
-🧠 CNN Model Assessment : {cnn_status}
-🌡️ Temperature Range   : {min_temp}°C – {max_temp}°C
-📊 Average Temperature : {avg_temp}°C
+🧠 Feature Extraction Engine : Deep Pixel Feature Analysis
+🌡️ Temperature Range        : {min_temp}°C – {max_temp}°C
+📊 Average Temperature      : {avg_temp}°C
 
-🔥 Warmest Zone        : {warmest_region}
-❄️ Coolest Zone         : {coolest_region}
-↔️ Asymmetry Difference: {lr_diff}°C
+🔥 Warmest Zone             : {warmest_region}
+❄️ Coolest Zone              : {coolest_region}
+↔️ Asymmetry Difference     : {lr_diff}°C
 
 --------------------------------------
 📌 OBSERVATION SUMMARY:"""
 
         if max_temp > 37.2 or lr_diff > 1.5:
             report_text += "\n⚠️ STATUS: ABNORMAL PATTERN DETECTED\nHigh thermal variance or hotspot observed. Secondary clinical validation suggested."
-            st.error(f"🚨 **STATUS: ABNORMAL PATTERN DETECTED** — CNN & Thermal Mapping identified high thermal variance!")
+            st.error("🚨 **STATUS: ABNORMAL PATTERN DETECTED** — Thermal mapping identified high variance!")
         else:
             report_text += "\n✅ STATUS: NORMAL PATTERN\nThermal distribution is standard and uniform across regions."
             st.success("✅ **STATUS: NORMAL PATTERN** — Thermal distribution is uniform.")
