@@ -1,32 +1,58 @@
+import io
 import cv2
 import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
 from PIL import Image
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 st.set_page_config(page_title="AI Thermal Health Dashboard", layout="wide")
 
 st.title("🌡️ AI Thermal Health Assessment Dashboard")
-st.write("Upload any thermal or standard photo to process heatmaps and health metrics.")
+st.write("Upload any photo to generate thermal analysis and download the PDF report.")
 
 # Sidebar Controls
 st.sidebar.header("⚙️ Settings & Options")
 selected_cmap = st.sidebar.selectbox("Choose Primary Heatmap Colormap:", ["jet", "inferno", "plasma", "viridis", "magma"])
 
-# Simplified File Uploader for Mobile Stability
+# File Uploader
 uploaded_file = st.file_uploader("📸 Upload Image from Gallery or Camera", type=["jpg", "jpeg", "png", "webp"])
+
+def generate_pdf(min_temp, max_temp, avg_temp, warmest_region, coolest_region, lr_diff, status_text):
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    
+    p.setFont("Helvetica-Bold", 18)
+    p.drawString(100, 750, "AI Thermal Health Assessment Report")
+    p.setLineWidth(1)
+    p.line(100, 740, 500, 740)
+    
+    p.setFont("Helvetica", 12)
+    p.drawString(100, 700, f"Temperature Range: {min_temp}°C - {max_temp}°C")
+    p.drawString(100, 680, f"Average Temperature: {avg_temp}°C")
+    p.drawString(100, 660, f"Warmest Zone: {warmest_region}")
+    p.drawString(100, 640, f"Coolest Zone: {coolest_region}")
+    p.drawString(100, 620, f"Bilateral Asymmetry: {lr_diff}°C")
+    
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(100, 580, f"Diagnostic Status: {status_text}")
+    
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    return buffer
 
 if uploaded_file is not None:
     try:
-        # Load and resize image for smooth mobile performance
         pil_image = Image.open(uploaded_file).convert("RGB")
-        pil_image.thumbnail((800, 800))  # Keeps memory usage low on mobile
+        pil_image.thumbnail((800, 800))
         
         image = np.array(pil_image)
         image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
         
-        # Thermal Scale Mapping (25°C - 38°C)
+        # Thermal Scale Mapping
         min_temp = round(25.0 + (float(np.min(gray)) / 255.0) * 13.0, 1)
         max_temp = round(25.0 + (float(np.max(gray)) / 255.0) * 13.0, 1)
         avg_temp = round(25.0 + (float(np.mean(gray)) / 255.0) * 13.0, 1)
@@ -48,60 +74,49 @@ if uploaded_file is not None:
         st.subheader("🖼️ Thermal Visualizations")
         
         c1, c2, c3 = st.columns(3)
-        
         with c1:
             st.markdown("##### 1. Original Image")
             st.image(image_bgr, channels="BGR", use_container_width=True)
-            
         with c2:
             st.markdown(f"##### 2. {selected_cmap.upper()} Heatmap")
             fig1, ax1 = plt.subplots(figsize=(4, 4))
-            cax1 = ax1.imshow(gray, cmap=selected_cmap)
-            fig1.colorbar(cax1, label="Temp Index (°C)", shrink=0.8)
+            ax1.imshow(gray, cmap=selected_cmap)
             ax1.axis("off")
             st.pyplot(fig1)
-            
         with c3:
             st.markdown("##### 3. INFERNO Map")
             fig2, ax2 = plt.subplots(figsize=(4, 4))
-            cax2 = ax2.imshow(gray, cmap="inferno")
-            fig2.colorbar(cax2, label="Intensity", shrink=0.8)
+            ax2.imshow(gray, cmap="inferno")
             ax2.axis("off")
             st.pyplot(fig2)
             
         st.markdown("---")
-        st.subheader("📊 Thermal Metrics & Analysis")
+        st.subheader("📊 Thermal Metrics")
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Min - Max Temp", f"{min_temp}°C – {max_temp}°C")
         m2.metric("Average Temp", f"{avg_temp}°C")
-        m3.metric("Left/Right Asymmetry", f"{lr_diff}°C")
+        m3.metric("Asymmetry Diff", f"{lr_diff}°C")
         m4.metric("Warmest Zone", warmest_region)
 
-        st.markdown("---")
-        st.subheader("📝 Diagnostic Report")
-        
-        report_text = f"""======================================
-     THERMAL ANALYSIS REPORT     
-======================================
-🌡️ Temperature Range        : {min_temp}°C – {max_temp}°C
-📊 Average Temperature      : {avg_temp}°C
-
-🔥 Warmest Zone             : {warmest_region}
-❄️ Coolest Zone              : {coolest_region}
-↔️ Asymmetry Difference     : {lr_diff}°C
-
---------------------------------------
-📌 OBSERVATION SUMMARY:"""
-
+        # Status Check
         if max_temp > 37.2 or lr_diff > 1.5:
-            report_text += "\n⚠️ STATUS: ABNORMAL PATTERN DETECTED\nHigh thermal variance observed."
-            st.error("🚨 **STATUS: ABNORMAL PATTERN DETECTED**")
+            status_text = "ABNORMAL PATTERN DETECTED"
+            st.error(f"🚨 **STATUS: {status_text}**")
         else:
-            report_text += "\n✅ STATUS: NORMAL PATTERN\nThermal distribution is standard."
-            st.success("✅ **STATUS: NORMAL PATTERN**")
+            status_text = "NORMAL PATTERN"
+            st.success(f"✅ **STATUS: {status_text}**")
 
-        st.code(report_text, language="markdown")
+        # PDF Download Section
+        pdf_data = generate_pdf(min_temp, max_temp, avg_temp, warmest_region, coolest_region, lr_diff, status_text)
+        
+        st.markdown("---")
+        st.download_button(
+            label="📥 Download Diagnostic PDF Report",
+            data=pdf_data,
+            file_name="Thermal_Health_Report.pdf",
+            mime="application/pdf"
+        )
 
     except Exception as e:
-        st.error("⚠️ Unable to process image. Please try uploading a different photo format (JPG/PNG).")
+        st.error("⚠️ Error processing image. Please try uploading another JPG/PNG file.")
         
