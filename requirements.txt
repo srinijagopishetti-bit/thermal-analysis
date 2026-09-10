@@ -4,6 +4,7 @@ numpy
 matplotlib
 reportlab
 supabase
+tensorflow
 
 
 
