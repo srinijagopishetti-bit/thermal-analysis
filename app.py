@@ -4,14 +4,14 @@ import numpy as np
 from PIL import Image
 import io
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from supabase import create_client, Client
 
 # --- SUPABASE CONFIGURATION ---
-SUPABASE_URL = "https://your-project-id.supabase.co"  # మీ అసలు URL ఇక్కడ ఇవ్వండి
-SUPABASE_KEY = "your-supabase-anon-key"             # మీ అసలు Key ఇక్కడ ఇవ్వండి
+SUPABASE_URL = "https://your-project-id.supabase.co"  # మీ Supabase URL ఇవ్వండి
+SUPABASE_KEY = "your-supabase-anon-key"             # మీ Supabase Key ఇవ్వండి
 
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -33,7 +33,6 @@ with tab1:
         image = Image.open(uploaded_file)
         img_array = np.array(image)
         
-        # ఇక్కడ మార్పు చేయబడింది (use_container_width)
         st.image(image, caption="Uploaded Thermal Image", use_container_width=True)
         
         if st.button("Process & Analyze"):
@@ -62,7 +61,8 @@ with tab1:
                     except Exception:
                         pass
 
-                def generate_pdf():
+                # PDF Generation with Image included
+                def generate_pdf(img_pil):
                     buffer = io.BytesIO()
                     doc = SimpleDocTemplate(buffer, pagesize=letter)
                     story = []
@@ -78,7 +78,15 @@ with tab1:
                     
                     story.append(Paragraph("AI Thermal Health Assessment Report", title_style))
                     story.append(Paragraph("Non-Invasive Physiological Screening Output", styles['Normal']))
-                    story.append(Spacer(1, 12))
+                    story.append(Spacer(1, 10))
+                    
+                    # టెంపరరీగా ఇమేజ్‌ని రిపోర్ట్‌లోకి పంపడం కోసం సేవ్ చేయడం
+                    temp_img_path = "temp_report_img.png"
+                    img_pil.save(temp_img_path)
+                    
+                    # PDF లో ఇమేజ్ జోడించడం
+                    story.append(RLImage(temp_img_path, width=200, height=150))
+                    story.append(Spacer(1, 10))
                     
                     data = [
                         ['Metric', 'Value'],
@@ -105,9 +113,9 @@ with tab1:
                     buffer.seek(0)
                     return buffer
 
-                pdf_data = generate_pdf()
+                pdf_data = generate_pdf(image)
                 st.download_button(
-                    label="📥 Download Clinical PDF Report",
+                    label="📥 Download Clinical PDF Report (With Image & Table)",
                     data=pdf_data,
                     file_name="Thermal_Assessment_Report.pdf",
                     mime="application/pdf"
@@ -125,7 +133,7 @@ with tab2:
             else:
                 st.info("No past images found in Supabase storage yet.")
         except Exception as e:
-            st.warning(f"Could not load history: {e}")
+            st.warning(f"Could not load history. Make sure bucket 'thermal-images' is public in Supabase.")
     else:
         st.warning("Please configure your Supabase credentials to view history.")
         
