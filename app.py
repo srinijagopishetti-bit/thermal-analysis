@@ -43,7 +43,7 @@ if not st.session_state.authenticated:
         username = st.text_input("Username", key="login_user")
         password = st.text_input("Password", type="password", key="login_pass")
         if st.button("🔓 Login to Dashboard", key="btn_login", use_container_width=True):
-            if username == "admin" and password == "1234":
+            if username == "admin" and password == "Thermal2026":
                 st.session_state.authenticated = True
                 st.rerun()
             else:
