@@ -1,9 +1,8 @@
 streamlit
 opencv-python-headless
-matplotlib
-pillow
 numpy
+tensorflow
 reportlab
-supabase
+
 
 
