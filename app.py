@@ -167,32 +167,38 @@ if uploaded_file is not None:
         if upload_to_supabase(orig_img_bytes, uploaded_file.name):
             st.toast("💾 Record backed up to Supabase Cloud Storage!", icon="✅")
 
-        # --- 4. HSV SKIN COLOR SEGMENTATION (EXCLUDES BLANKET/BACKGROUND) ---
+        # --- 4. DYNAMIC BODY SEGMENTATION (HYBRID SYSTEM) ---
         hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
         
-        # Define HSV thresholds for skin tone isolation
+        # Mask 1: Natural skin color ranges
         lower_skin = np.array([0, 20, 70], dtype=np.uint8)
         upper_skin = np.array([20, 255, 255], dtype=np.uint8)
+        skin_mask = cv2.inRange(hsv, lower_skin, upper_skin)
         
-        body_mask = cv2.inRange(hsv, lower_skin, upper_skin)
+        # Mask 2: Non-black region mask (for pre-rendered thermal scan images)
+        non_black_mask = cv2.inRange(gray, 15, 255)
         
+        # Choose Mask: If natural skin covers > 5% of the frame, use skin_mask; else use non_black_mask
+        if np.sum(skin_mask > 0) > (0.05 * gray.size):
+            body_mask = skin_mask
+        else:
+            body_mask = non_black_mask
+
         # Clean mask specks
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         body_mask = cv2.morphologyEx(body_mask, cv2.MORPH_OPEN, kernel, iterations=2)
-        body_mask = cv2.dilate(body_mask, kernel, iterations=1)
 
-        # Restrict calculations ONLY to detected skin pixels
+        # Extract detected pixels
         body_pixels = gray[body_mask == 255]
-        
         if len(body_pixels) == 0:
             body_pixels = gray.flatten()
 
-        # Metrics calculated only on body/hand surface
+        # Thermal Metrics
         min_temp = round(25.0 + (float(np.min(body_pixels)) / 255.0) * 13.0, 1)
         max_temp = round(25.0 + (float(np.max(body_pixels)) / 255.0) * 13.0, 1)
         avg_temp = round(25.0 + (float(np.mean(body_pixels)) / 255.0) * 13.0, 1)
         
-        # Segmented Zone Calculations
+        # Regional Zone Calculations
         h, w = gray.shape
         top_mask = (body_mask[0:int(h/3), :] == 255)
         mid_mask = (body_mask[int(h/3):int(2*h/3), :] == 255)
@@ -206,7 +212,7 @@ if uploaded_file is not None:
         warmest_region = max(regions, key=regions.get)
         coolest_region = min(regions, key=regions.get)
 
-        # Bilateral Asymmetry on skin mask
+        # Bilateral Asymmetry
         left_mask = (body_mask[:, 0:int(w/2)] == 255)
         right_mask = (body_mask[:, int(w/2):w] == 255)
 
@@ -214,7 +220,7 @@ if uploaded_file is not None:
         right_side = np.mean(gray[:, int(w/2):w][right_mask]) if np.any(right_mask) else 0
 
         lr_diff = round(abs(left_side - right_side) * (13.0 / 255.0), 1)
-        
+
         # --- 5. UI VISUALIZATIONS ---
         st.markdown("---")
         st.subheader("🖼️ Thermal Visualizations")
@@ -228,7 +234,7 @@ if uploaded_file is not None:
             st.markdown(f"##### 2. {selected_cmap.upper()} Thermal Heatmap (Subject Only)")
             fig1, ax1 = plt.subplots(figsize=(4, 4))
             
-            # Mask out background so blanket is not rendered in colormap
+            # Mask out background canvas
             masked_float = np.where(body_mask == 255, gray.astype(float), np.nan)
             cax1 = ax1.imshow(masked_float, cmap=selected_cmap)
             fig1.colorbar(cax1, label="Temp Scale (°C)", shrink=0.8)
@@ -274,4 +280,4 @@ if uploaded_file is not None:
 
     except Exception as e:
         st.error("⚠️ Error processing image. Please ensure you upload a valid image file.")
-    
+        
