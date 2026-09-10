@@ -1,7 +1,10 @@
 streamlit
 opencv-python-headless
 numpy
+matplotlib
+tensorflow
 reportlab
+supabase
 
 
 
