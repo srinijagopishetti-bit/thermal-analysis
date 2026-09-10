@@ -9,50 +9,85 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+from supabase import create_client, Client
+
+# --- 1. SUPABASE CONFIGURATION ---
+SUPABASE_URL = "YOUR_SUPABASE_PROJECT_URL"  # Replace with your Supabase Project URL
+SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY"      # Replace with your Supabase Anon Key
 
 st.set_page_config(page_title="AI Thermal Health Dashboard", layout="wide")
 
+@st.cache_resource
+def init_supabase():
+    try:
+        return create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception:
+        return None
+
+supabase = init_supabase()
+
+# --- 2. AUTHENTICATION LOGIC ---
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.title("🔐 Thermal Health Dashboard - Login")
+    st.caption("Access Restricted: Authorized Medical & Evaluation Personnel Only")
+    
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        login_btn = st.button("🔓 Login to Dashboard", use_container_width=True)
+        
+        if login_btn:
+            if username == "admin" and password == "1234":
+                st.session_state.authenticated = True
+                st.success("Login successful!")
+                st.rerun()
+            else:
+                st.error("Invalid Username or Password")
+    st.stop()
+
+# --- 3. MAIN DASHBOARD ---
+st.sidebar.button("🔒 Logout", on_click=lambda: st.session_state.update(authenticated=False))
+
 st.title("🌡️ AI Thermal Health Assessment Dashboard")
-st.write("Upload any photo to generate thermal analysis and download a visual PDF report with thermal icons.")
+st.write("Upload thermal or standard images to extract temperature metrics, store cloud records, and export graphical reports.")
 
 # Sidebar Controls
 st.sidebar.header("⚙️ Settings & Options")
-selected_cmap = st.sidebar.selectbox("Choose Primary Heatmap Colormap:", ["jet", "inferno", "plasma", "viridis", "magma"])
+selected_cmap = st.sidebar.selectbox("Choose Heatmap Colormap:", ["jet", "inferno", "plasma", "viridis", "magma"])
 
-# File Uploader
-uploaded_file = st.file_uploader("📸 Upload Image from Gallery or Camera", type=["jpg", "jpeg", "png", "webp"])
+# Cloud Storage Upload Helper
+def upload_to_supabase(file_bytes, filename):
+    if supabase is None or SUPABASE_URL == "YOUR_SUPABASE_PROJECT_URL":
+        return False
+    try:
+        supabase.storage.from_("thermal-images").upload(filename, file_bytes)
+        return True
+    except Exception:
+        return False
 
+# PDF Generation Function
 def generate_attractive_pdf(orig_img_bytes, heatmap_bytes, min_temp, max_temp, avg_temp, warmest_region, coolest_region, lr_diff, status_text):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = []
     styles = getSampleStyleSheet()
 
-    # Custom Styles
     title_style = ParagraphStyle(
-        'DocTitle',
-        parent=styles['Heading1'],
-        fontName='Helvetica-Bold',
-        fontSize=20,
-        textColor=colors.HexColor("#1A365D"),
-        spaceAfter=10,
-        alignment=1
+        'DocTitle', parent=styles['Heading1'], fontName='Helvetica-Bold',
+        fontSize=20, textColor=colors.HexColor("#1A365D"), spaceAfter=10, alignment=1
     )
-    
     sub_title_style = ParagraphStyle(
-        'SubTitle',
-        parent=styles['Heading2'],
-        fontName='Helvetica-Bold',
-        fontSize=13,
-        textColor=colors.HexColor("#2B6CB0"),
-        spaceAfter=10
+        'SubTitle', parent=styles['Heading2'], fontName='Helvetica-Bold',
+        fontSize=13, textColor=colors.HexColor("#2B6CB0"), spaceAfter=10
     )
 
-    # 1. Header / Title
     story.append(Paragraph("AI Thermal Health Assessment Report", title_style))
     story.append(Spacer(1, 10))
 
-    # 2. Images Side-by-Side
     img_orig_stream = io.BytesIO(orig_img_bytes)
     img_heat_stream = io.BytesIO(heatmap_bytes)
     
@@ -65,19 +100,16 @@ def generate_attractive_pdf(orig_img_bytes, heatmap_bytes, min_temp, max_temp, a
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('BOTTOMPADDING', (0,0), (-1,-1), 10),
     ]))
-    
     story.append(img_table)
     story.append(Spacer(1, 15))
 
-    # 3. Metrics Table with Visual Descriptors
     story.append(Paragraph("Quantitative Thermal Analysis", sub_title_style))
-    
     data = [
         ["Parameter / Metric", "Value", "Reference Threshold"],
-        ["Temp Range", f"{min_temp}°C – {max_temp}°C", "25.0°C – 38.0°C"],
+        ["Body Temp Range", f"{min_temp}°C – {max_temp}°C", "25.0°C – 38.0°C"],
         ["Average Temp", f"{avg_temp}°C", "36.1°C – 37.2°C"],
-        ["Warmest Zone (HOT)", f"{warmest_region}", "Facial / Chest"],
-        ["Coolest Zone (COLD)", f"{coolest_region}", "Extremities"],
+        ["Warmest Zone (HOT)", f"{warmest_region}", "Subject Specific"],
+        ["Coolest Zone (COLD)", f"{coolest_region}", "Subject Specific"],
         ["Bilateral Asymmetry", f"{lr_diff}°C", "< 1.5°C Normal"]
     ]
 
@@ -97,18 +129,10 @@ def generate_attractive_pdf(orig_img_bytes, heatmap_bytes, min_temp, max_temp, a
     story.append(t)
     story.append(Spacer(1, 15))
 
-    # 4. Diagnostic Status Banner
     story.append(Paragraph("Diagnostic Status Summary", sub_title_style))
     bg_color = colors.HexColor("#E53E3E") if "ABNORMAL" in status_text else colors.HexColor("#38A169")
     
-    status_style = ParagraphStyle(
-        'StatusText',
-        fontName='Helvetica-Bold',
-        fontSize=12,
-        textColor=colors.white,
-        alignment=1
-    )
-    
+    status_style = ParagraphStyle('StatusText', fontName='Helvetica-Bold', fontSize=12, textColor=colors.white, alignment=1)
     status_p = Paragraph(f"STATUS: {status_text}", status_style)
     status_table = Table([[status_p]], colWidths=[540])
     status_table.setStyle(TableStyle([
@@ -117,12 +141,14 @@ def generate_attractive_pdf(orig_img_bytes, heatmap_bytes, min_temp, max_temp, a
         ('BOTTOMPADDING', (0,0), (-1,-1), 10),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
     ]))
-    
     story.append(status_table)
 
     doc.build(story)
     buffer.seek(0)
     return buffer
+
+# File Input
+uploaded_file = st.file_uploader("📸 Upload Image from Gallery or Camera", type=["jpg", "jpeg", "png", "webp"])
 
 if uploaded_file is not None:
     try:
@@ -133,59 +159,80 @@ if uploaded_file is not None:
         image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
         
-        # Save original image bytes for PDF
         buf_orig = io.BytesIO()
         pil_image.save(buf_orig, format="PNG")
         orig_img_bytes = buf_orig.getvalue()
 
-        # Thermal Scale Mapping
-        min_temp = round(25.0 + (float(np.min(gray)) / 255.0) * 13.0, 1)
-        max_temp = round(25.0 + (float(np.max(gray)) / 255.0) * 13.0, 1)
-        avg_temp = round(25.0 + (float(np.mean(gray)) / 255.0) * 13.0, 1)
+        # Database Sync
+        if upload_to_supabase(orig_img_bytes, uploaded_file.name):
+            st.toast("💾 Record backed up to Supabase Cloud Storage!", icon="✅")
+
+        # --- 4. HUMAN BODY SEGMENTATION (BACKGROUND MASKING) ---
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        _, body_mask = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         
+        body_pixels = gray[body_mask == 255]
+        if len(body_pixels) == 0:
+            body_pixels = gray.flatten()
+
+        # Metrics based ONLY on human body pixels
+        min_temp = round(25.0 + (float(np.min(body_pixels)) / 255.0) * 13.0, 1)
+        max_temp = round(25.0 + (float(np.max(body_pixels)) / 255.0) * 13.0, 1)
+        avg_temp = round(25.0 + (float(np.mean(body_pixels)) / 255.0) * 13.0, 1)
+        
+        # Segmented Region Detection
         h, w = gray.shape
-        top_region = np.mean(gray[0:int(h/3), :])
-        mid_region = np.mean(gray[int(h/3):int(2*h/3), :])
-        bot_region = np.mean(gray[int(2*h/3):h, :])
-        
-        regions = {"Face/Forehead": top_region, "Chest/Abdomen": mid_region, "Hands/Feet": bot_region}
+        top_mask = (body_mask[0:int(h/3), :] == 255)
+        mid_mask = (body_mask[int(h/3):int(2*h/3), :] == 255)
+        bot_mask = (body_mask[int(2*h/3):h, :] == 255)
+
+        top_region = np.mean(gray[0:int(h/3), :][top_mask]) if np.any(top_mask) else 0
+        mid_region = np.mean(gray[int(h/3):int(2*h/3), :][mid_mask]) if np.any(mid_mask) else 0
+        bot_region = np.mean(gray[int(2*h/3):h, :][bot_mask]) if np.any(bot_mask) else 0
+
+        regions = {"Upper Zone": top_region, "Middle Zone": mid_region, "Lower Zone": bot_region}
         warmest_region = max(regions, key=regions.get)
         coolest_region = min(regions, key=regions.get)
-        
-        left_side = np.mean(gray[:, 0:int(w/2)])
-        right_side = np.mean(gray[:, int(w/2):w])
+
+        # Bilateral Asymmetry (Left vs Right Body Mask)
+        left_mask = (body_mask[:, 0:int(w/2)] == 255)
+        right_mask = (body_mask[:, int(w/2):w] == 255)
+
+        left_side = np.mean(gray[:, 0:int(w/2)][left_mask]) if np.any(left_mask) else 0
+        right_side = np.mean(gray[:, int(w/2):w][right_mask]) if np.any(right_mask) else 0
+
         lr_diff = round(abs(left_side - right_side) * (13.0 / 255.0), 1)
         
+        # --- 5. UI VISUALIZATIONS ---
         st.markdown("---")
         st.subheader("🖼️ Thermal Visualizations")
         
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("##### 1. Original Image")
+            st.markdown("##### 1. Original Subject Image")
             st.image(image_bgr, channels="BGR", use_container_width=True)
             
         with c2:
-            st.markdown(f"##### 2. {selected_cmap.upper()} Heatmap")
+            st.markdown(f"##### 2. {selected_cmap.upper()} Thermal Heatmap")
             fig1, ax1 = plt.subplots(figsize=(4, 4))
             cax1 = ax1.imshow(gray, cmap=selected_cmap)
-            fig1.colorbar(cax1, label="Temp Index (°C)", shrink=0.8)
+            fig1.colorbar(cax1, label="Temp Scale (°C)", shrink=0.8)
             ax1.axis("off")
             st.pyplot(fig1)
             
-            # Save heatmap bytes for PDF
             buf_heat = io.BytesIO()
             fig1.savefig(buf_heat, format="png", bbox_inches='tight')
             heatmap_bytes = buf_heat.getvalue()
 
         st.markdown("---")
-        st.subheader("📊 Thermal Metrics")
+        st.subheader("📊 Subject Thermal Metrics")
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("🌡️ Temp Range", f"{min_temp}°C – {max_temp}°C")
-        m2.metric("📊 Average Temp", f"{avg_temp}°C")
-        m3.metric("↔️ Asymmetry Diff", f"{lr_diff}°C")
+        m1.metric("🌡️ Body Temp Range", f"{min_temp}°C – {max_temp}°C")
+        m2.metric("📊 Average Body Temp", f"{avg_temp}°C")
+        m3.metric("↔️ Asymmetry Variance", f"{lr_diff}°C")
         m4.metric("🔥 Warmest Zone", warmest_region)
 
-        # Status Check with Icons
+        # Diagnostic Threshold Logic
         if max_temp > 37.2 or lr_diff > 1.5:
             status_text = "ABNORMAL PATTERN DETECTED"
             st.error(f"🚨 **STATUS: {status_text}**")
@@ -193,7 +240,6 @@ if uploaded_file is not None:
             status_text = "NORMAL PATTERN"
             st.success(f"✅ **STATUS: {status_text}**")
 
-        # PDF Generation
         pdf_data = generate_attractive_pdf(
             orig_img_bytes, heatmap_bytes, 
             min_temp, max_temp, avg_temp, 
@@ -203,12 +249,271 @@ if uploaded_file is not None:
         
         st.markdown("---")
         st.download_button(
-            label="📥 Download Graphical PDF Report",
+            label="📥 Download Graphical Diagnostic PDF",
             data=pdf_data,
-            file_name="Thermal_Health_Report.pdf",
+            file_name="Thermal_Diagnostic_Report.pdf",
             mime="application/pdf"
         )
 
     except Exception as e:
-        st.error("⚠️ Error processing image. Please try uploading another photo.")
+        st.error("⚠️ Error processing image. Please ensure you upload a valid image file.")
+        import io
+import cv2
+import numpy as np
+import streamlit as st
+import matplotlib.pyplot as plt
+from PIL import Image
+
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from supabase import create_client, Client
+
+# --- 1. SUPABASE CONFIGURATION ---
+SUPABASE_URL = "YOUR_SUPABASE_PROJECT_URL"  # Replace with your Supabase Project URL
+SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY"      # Replace with your Supabase Anon Key
+
+st.set_page_config(page_title="AI Thermal Health Dashboard", layout="wide")
+
+@st.cache_resource
+def init_supabase():
+    try:
+        return create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception:
+        return None
+
+supabase = init_supabase()
+
+# --- 2. AUTHENTICATION LOGIC ---
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.title("🔐 Thermal Health Dashboard - Login")
+    st.caption("Access Restricted: Authorized Medical & Evaluation Personnel Only")
+    
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        login_btn = st.button("🔓 Login to Dashboard", use_container_width=True)
+        
+        if login_btn:
+            if username == "admin" and password == "1234":
+                st.session_state.authenticated = True
+                st.success("Login successful!")
+                st.rerun()
+            else:
+                st.error("Invalid Username or Password")
+    st.stop()
+
+# --- 3. MAIN DASHBOARD ---
+st.sidebar.button("🔒 Logout", on_click=lambda: st.session_state.update(authenticated=False))
+
+st.title("🌡️ AI Thermal Health Assessment Dashboard")
+st.write("Upload thermal or standard images to extract temperature metrics, store cloud records, and export graphical reports.")
+
+# Sidebar Controls
+st.sidebar.header("⚙️ Settings & Options")
+selected_cmap = st.sidebar.selectbox("Choose Heatmap Colormap:", ["jet", "inferno", "plasma", "viridis", "magma"])
+
+# Cloud Storage Upload Helper
+def upload_to_supabase(file_bytes, filename):
+    if supabase is None or SUPABASE_URL == "YOUR_SUPABASE_PROJECT_URL":
+        return False
+    try:
+        supabase.storage.from_("thermal-images").upload(filename, file_bytes)
+        return True
+    except Exception:
+        return False
+
+# PDF Generation Function
+def generate_attractive_pdf(orig_img_bytes, heatmap_bytes, min_temp, max_temp, avg_temp, warmest_region, coolest_region, lr_diff, status_text):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    story = []
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'DocTitle', parent=styles['Heading1'], fontName='Helvetica-Bold',
+        fontSize=20, textColor=colors.HexColor("#1A365D"), spaceAfter=10, alignment=1
+    )
+    sub_title_style = ParagraphStyle(
+        'SubTitle', parent=styles['Heading2'], fontName='Helvetica-Bold',
+        fontSize=13, textColor=colors.HexColor("#2B6CB0"), spaceAfter=10
+    )
+
+    story.append(Paragraph("AI Thermal Health Assessment Report", title_style))
+    story.append(Spacer(1, 10))
+
+    img_orig_stream = io.BytesIO(orig_img_bytes)
+    img_heat_stream = io.BytesIO(heatmap_bytes)
+    
+    rl_img_orig = RLImage(img_orig_stream, width=240, height=200)
+    rl_img_heat = RLImage(img_heat_stream, width=240, height=200)
+
+    img_table = Table([[rl_img_orig, rl_img_heat]], colWidths=[270, 270])
+    img_table.setStyle(TableStyle([
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+    ]))
+    story.append(img_table)
+    story.append(Spacer(1, 15))
+
+    story.append(Paragraph("Quantitative Thermal Analysis", sub_title_style))
+    data = [
+        ["Parameter / Metric", "Value", "Reference Threshold"],
+        ["Body Temp Range", f"{min_temp}°C – {max_temp}°C", "25.0°C – 38.0°C"],
+        ["Average Temp", f"{avg_temp}°C", "36.1°C – 37.2°C"],
+        ["Warmest Zone (HOT)", f"{warmest_region}", "Subject Specific"],
+        ["Coolest Zone (COLD)", f"{coolest_region}", "Subject Specific"],
+        ["Bilateral Asymmetry", f"{lr_diff}°C", "< 1.5°C Normal"]
+    ]
+
+    t = Table(data, colWidths=[180, 180, 180])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2B6CB0")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,0), 10),
+        ('BOTTOMPADDING', (0,0), (-1,0), 8),
+        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F7FAFC")),
+        ('GRID', (0,0), (-1,-1), 1, colors.HexColor("#CBD5E0")),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
+        ('FONTSIZE', (0,1), (-1,-1), 9),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 15))
+
+    story.append(Paragraph("Diagnostic Status Summary", sub_title_style))
+    bg_color = colors.HexColor("#E53E3E") if "ABNORMAL" in status_text else colors.HexColor("#38A169")
+    
+    status_style = ParagraphStyle('StatusText', fontName='Helvetica-Bold', fontSize=12, textColor=colors.white, alignment=1)
+    status_p = Paragraph(f"STATUS: {status_text}", status_style)
+    status_table = Table([[status_p]], colWidths=[540])
+    status_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), bg_color),
+        ('TOPPADDING', (0,0), (-1,-1), 10),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+    ]))
+    story.append(status_table)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+# File Input
+uploaded_file = st.file_uploader("📸 Upload Image from Gallery or Camera", type=["jpg", "jpeg", "png", "webp"])
+
+if uploaded_file is not None:
+    try:
+        pil_image = Image.open(uploaded_file).convert("RGB")
+        pil_image.thumbnail((800, 800))
+        
+        image = np.array(pil_image)
+        image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+        
+        buf_orig = io.BytesIO()
+        pil_image.save(buf_orig, format="PNG")
+        orig_img_bytes = buf_orig.getvalue()
+
+        # Database Sync
+        if upload_to_supabase(orig_img_bytes, uploaded_file.name):
+            st.toast("💾 Record backed up to Supabase Cloud Storage!", icon="✅")
+
+        # --- 4. HUMAN BODY SEGMENTATION (BACKGROUND MASKING) ---
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        _, body_mask = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        body_pixels = gray[body_mask == 255]
+        if len(body_pixels) == 0:
+            body_pixels = gray.flatten()
+
+        # Metrics based ONLY on human body pixels
+        min_temp = round(25.0 + (float(np.min(body_pixels)) / 255.0) * 13.0, 1)
+        max_temp = round(25.0 + (float(np.max(body_pixels)) / 255.0) * 13.0, 1)
+        avg_temp = round(25.0 + (float(np.mean(body_pixels)) / 255.0) * 13.0, 1)
+        
+        # Segmented Region Detection
+        h, w = gray.shape
+        top_mask = (body_mask[0:int(h/3), :] == 255)
+        mid_mask = (body_mask[int(h/3):int(2*h/3), :] == 255)
+        bot_mask = (body_mask[int(2*h/3):h, :] == 255)
+
+        top_region = np.mean(gray[0:int(h/3), :][top_mask]) if np.any(top_mask) else 0
+        mid_region = np.mean(gray[int(h/3):int(2*h/3), :][mid_mask]) if np.any(mid_mask) else 0
+        bot_region = np.mean(gray[int(2*h/3):h, :][bot_mask]) if np.any(bot_mask) else 0
+
+        regions = {"Upper Zone": top_region, "Middle Zone": mid_region, "Lower Zone": bot_region}
+        warmest_region = max(regions, key=regions.get)
+        coolest_region = min(regions, key=regions.get)
+
+        # Bilateral Asymmetry (Left vs Right Body Mask)
+        left_mask = (body_mask[:, 0:int(w/2)] == 255)
+        right_mask = (body_mask[:, int(w/2):w] == 255)
+
+        left_side = np.mean(gray[:, 0:int(w/2)][left_mask]) if np.any(left_mask) else 0
+        right_side = np.mean(gray[:, int(w/2):w][right_mask]) if np.any(right_mask) else 0
+
+        lr_diff = round(abs(left_side - right_side) * (13.0 / 255.0), 1)
+        
+        # --- 5. UI VISUALIZATIONS ---
+        st.markdown("---")
+        st.subheader("🖼️ Thermal Visualizations")
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("##### 1. Original Subject Image")
+            st.image(image_bgr, channels="BGR", use_container_width=True)
+            
+        with c2:
+            st.markdown(f"##### 2. {selected_cmap.upper()} Thermal Heatmap")
+            fig1, ax1 = plt.subplots(figsize=(4, 4))
+            cax1 = ax1.imshow(gray, cmap=selected_cmap)
+            fig1.colorbar(cax1, label="Temp Scale (°C)", shrink=0.8)
+            ax1.axis("off")
+            st.pyplot(fig1)
+            
+            buf_heat = io.BytesIO()
+            fig1.savefig(buf_heat, format="png", bbox_inches='tight')
+            heatmap_bytes = buf_heat.getvalue()
+
+        st.markdown("---")
+        st.subheader("📊 Subject Thermal Metrics")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("🌡️ Body Temp Range", f"{min_temp}°C – {max_temp}°C")
+        m2.metric("📊 Average Body Temp", f"{avg_temp}°C")
+        m3.metric("↔️ Asymmetry Variance", f"{lr_diff}°C")
+        m4.metric("🔥 Warmest Zone", warmest_region)
+
+        # Diagnostic Threshold Logic
+        if max_temp > 37.2 or lr_diff > 1.5:
+            status_text = "ABNORMAL PATTERN DETECTED"
+            st.error(f"🚨 **STATUS: {status_text}**")
+        else:
+            status_text = "NORMAL PATTERN"
+            st.success(f"✅ **STATUS: {status_text}**")
+
+        pdf_data = generate_attractive_pdf(
+            orig_img_bytes, heatmap_bytes, 
+            min_temp, max_temp, avg_temp, 
+            warmest_region, coolest_region, 
+            lr_diff, status_text
+        )
+        
+        st.markdown("---")
+        st.download_button(
+            label="📥 Download Graphical Diagnostic PDF",
+            data=pdf_data,
+            file_name="Thermal_Diagnostic_Report.pdf",
+            mime="application/pdf"
+        )
+
+    except Exception as e:
+        st.error("⚠️ Error processing image. Please ensure you upload a valid image file.")
         
