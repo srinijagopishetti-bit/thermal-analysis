@@ -9,13 +9,13 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from supabase import create_client, Client
 
-# --- SUPABASE CONFIGURATION (మీ అసలు URL మరియు Key ఇక్కడ ఇవ్వండి) ---
-SUPABASE_URL = "https://your-project-id.supabase.co"  # మీ Supabase URL ని ఇక్కడ పేస్ట్ చేయండి
-SUPABASE_KEY = "your-supabase-anon-key"             # మీ Supabase Anon Key ని ఇక్కడ పేస్ట్ చేయండి
+# --- SUPABASE CONFIGURATION ---
+SUPABASE_URL = "https://your-project-id.supabase.co"  # మీ అసలు URL ఇక్కడ ఇవ్వండి
+SUPABASE_KEY = "your-supabase-anon-key"             # మీ అసలు Key ఇక్కడ ఇవ్వండి
 
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-except Exception as e:
+except Exception:
     supabase = None
 
 st.set_page_config(page_title="AI Thermal Health Assessment", layout="centered")
@@ -23,7 +23,6 @@ st.set_page_config(page_title="AI Thermal Health Assessment", layout="centered")
 st.title("🔥 AI Thermal Health Assessment Dashboard")
 st.write("Non-invasive physiological screening tool using Computer Vision and CNN.")
 
-# --- TABS FOR NAVIGATION ---
 tab1, tab2 = st.tabs(["New Assessment", "Past History"])
 
 with tab1:
@@ -34,11 +33,11 @@ with tab1:
         image = Image.open(uploaded_file)
         img_array = np.array(image)
         
-        st.image(image, caption="Uploaded Thermal Image", use_column_width=True)
+        # ఇక్కడ మార్పు చేయబడింది (use_container_width)
+        st.image(image, caption="Uploaded Thermal Image", use_container_width=True)
         
         if st.button("Process & Analyze"):
             with st.spinner("Processing image & running AI model..."):
-                # Simulated Metrics Calculation
                 min_temp = 35.2
                 max_temp = 38.9
                 avg_temp = 36.8
@@ -54,7 +53,6 @@ with tab1:
                 
                 st.info("Status: Elevated Local Warming Detected (CNN Model Prediction)")
 
-                # Upload to Supabase Storage if configured
                 if supabase:
                     try:
                         file_bytes = uploaded_file.getvalue()
@@ -123,11 +121,11 @@ with tab2:
             if files:
                 for file in files:
                     img_url = supabase.storage.from_("thermal-images").get_public_url(file['name'])
-                    st.image(img_url, caption=f"File: {file['name']}", use_column_width=True)
+                    st.image(img_url, caption=f"File: {file['name']}", use_container_width=True)
             else:
                 st.info("No past images found in Supabase storage yet.")
         except Exception as e:
             st.warning(f"Could not load history: {e}")
     else:
-        st.warning("Please configure your Supabase URL and Key in the code to view history.")
-                    
+        st.warning("Please configure your Supabase credentials to view history.")
+        
