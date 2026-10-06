@@ -235,16 +235,20 @@ with tab1:
                 fig1.savefig(buf_heat, format="png", bbox_inches='tight', facecolor='black')
                 heatmap_bytes = buf_heat.getvalue()
 
+            # --- DISPLAY ANALYSIS REPORT DIRECTLY ON SCREEN ---
             st.markdown("---")
-            st.subheader("📊 Thermal Metrics & Model Classification")
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("🌡️ Temp Range", f"{min_temp}°C – {max_temp}°C")
-            m2.metric("📊 Average Temp", f"{avg_temp}°C")
-            m3.metric("↔️ Asymmetry", f"{lr_diff}°C")
-            m4.metric("🔥 Warmest Zone", warmest_region)
+            st.subheader("📋 Thermal Diagnostic Analysis Report")
+            
+            st.markdown(f"""
+            - **Temperature Range:** {min_temp}°C – {max_temp}°C *(Normal Reference: 25.0°C – 38.0°C)*
+            - **Average Temperature:** {avg_temp}°C *(Normal Reference: 36.1°C – 37.2°C)*
+            - **Warmest Zone:** {warmest_region}
+            - **Coolest Zone:** {coolest_region}
+            - **Bilateral Asymmetry:** {lr_diff}°C *(Threshold: < 1.5°C)*
+            - **AI Model Status:** **{cnn_status}** (Confidence: {cnn_conf}%)
+            """)
 
-            st.info(f"🤖 **Model Classification Output:** {cnn_status} (Confidence: {cnn_conf}%)")
-
+            # Generate the PDF file for downloading
             pdf_data = generate_attractive_pdf(
                 orig_img_bytes, heatmap_bytes, 
                 min_temp, max_temp, avg_temp, 
@@ -253,8 +257,9 @@ with tab1:
             )
             
             st.markdown("---")
+            # --- DOWNLOAD BUTTON RIGHT BELOW THE ANALYSIS REPORT ---
             st.download_button(
-                label="📥 Download Graphical Diagnostic PDF",
+                label="📥 Download Graphical Diagnostic PDF Report",
                 data=pdf_data,
                 file_name="Thermal_Diagnostic_Report.pdf",
                 mime="application/pdf",
@@ -277,4 +282,4 @@ with tab2:
             st.info("No uploads found for your account yet.")
     else:
         st.info("No history folder found.")
-            
+                
