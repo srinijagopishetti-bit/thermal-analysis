@@ -12,7 +12,7 @@ from reportlab.lib import colors
 from supabase import create_client
 
 # --- 1. SUPABASE CONFIGURATION (మీ వివరాలు విజయవంతంగా సెట్ చేయబడ్డాయి) ---
-SUPABASE_URL = "Https://kaiqvqsnovwdzbxwckfm.supabase.co"  
+SUPABASE_URL = "https://kaiqvqsnovwdzbxwckfm.supabase.co"  
 SUPABASE_KEY = "sb_publishable_qrxHio8zUMmAiihzDLjLZw_ozLSBHvr"             
 
 st.set_page_config(page_title="AI Thermal Health Assessment Dashboard", layout="centered")
