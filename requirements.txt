@@ -4,6 +4,6 @@ numpy
 matplotlib
 pillow
 reportlab
-supabase==2.3.0
-httpx<0.26.0
+supabase==2.12.0
+httpx<0.27.2
 
