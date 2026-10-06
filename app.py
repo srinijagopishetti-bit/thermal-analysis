@@ -80,6 +80,19 @@ def logout_func():
 st.sidebar.button("🔒 Logout", key="btn_logout_main", on_click=logout_func)
 st.sidebar.info(f"Logged in as: **{st.session_state.username}**")
 
+# --- SYSTEM USER ANALYTICS IN SIDEBAR (Faculty Demo Feature) ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("👥 System User Analytics")
+all_users = load_users()
+st.sidebar.metric("Total Registered Users", len(all_users))
+
+if len(all_users) > 0:
+    with st.sidebar.expander("📋 View All Users & Scans"):
+        for uname in all_users.keys():
+            user_dir = os.path.join("saved_reports", uname)
+            scan_count = len([f for f in os.listdir(user_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]) if os.path.exists(user_dir) else 0
+            st.write(f"- **{uname}** ({scan_count} scans)")
+
 # --- USER-SPECIFIC PRIVATE STORAGE FOLDER ---
 USER_HISTORY_DIR = os.path.join("saved_reports", st.session_state.username)
 os.makedirs(USER_HISTORY_DIR, exist_ok=True)
@@ -289,4 +302,4 @@ with tab2:
             st.info("No uploads found for your account yet.")
     else:
         st.info("No history folder found.")
-        
+            
