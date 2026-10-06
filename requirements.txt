@@ -4,3 +4,5 @@ numpy
 matplotlib
 pillow
 reportlab
+psycopg2-binary
+SQLAIchemy
