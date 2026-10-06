@@ -262,14 +262,11 @@ def analyze_and_display(pil_image, filename_key=""):
     )
 
 with tab1:
-    st.subheader("📸 Choose Image Input Method")
-    input_method = st.radio("Select Source:", ["Upload Image File", "Use Live Camera (Webcam/Mobile)"], horizontal=True)
+    st.subheader("📸 Upload or Capture Thermal Image")
+    st.info("💡 **Tip:** On mobile devices or laptops, clicking below will let you choose an image file **or** instantly snap a live photo using your built-in camera!")
     
-    uploaded_file = None
-    if input_method == "Upload Image File":
-        uploaded_file = st.file_uploader("Upload image from your device", type=["jpg", "jpeg", "png", "webp"], key="file_input")
-    else:
-        uploaded_file = st.camera_input("Capture live photo using your camera")
+    # Universal file uploader that natively triggers phone camera / gallery without permission errors
+    uploaded_file = st.file_uploader("Upload or Capture Image", type=["jpg", "jpeg", "png", "webp"], key="file_input")
 
     if uploaded_file is not None:
         try:
@@ -280,8 +277,7 @@ with tab1:
             pil_image.save(buf_orig, format="PNG")
             orig_img_bytes = buf_orig.getvalue()
 
-            # Handle file name dynamically for uploads vs camera captures
-            file_name = getattr(uploaded_file, "name", f"camera_capture_{st.session_state.username}.png")
+            file_name = getattr(uploaded_file, "name", f"scan_{st.session_state.username}.png")
             file_path = os.path.join(USER_HISTORY_DIR, file_name)
             
             if not os.path.exists(file_path):
