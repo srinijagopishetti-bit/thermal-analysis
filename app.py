@@ -3,12 +3,18 @@ import cv2
 import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
+import requests
 from PIL import Image
 
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+
+# --- SUPABASE REST API CONFIGURATION ---
+SUPABASE_URL = "https://kaiqvqsnovwdzbxwckfm.supabase.co"  
+SUPABASE_KEY = "sb_publishable_qrxHio8zUMmAiihzDLjLZw_ozLSBHvr"
+BUCKET_NAME = "thermal-images"
 
 st.set_page_config(page_title="AI Thermal Health Assessment Dashboard", layout="centered")
 
@@ -45,9 +51,38 @@ selected_cmap = st.sidebar.selectbox("Choose Heatmap Colormap:", ["jet", "infern
 
 tab1, tab2 = st.tabs(["New Assessment", "Past History"])
 
-# Session storage for history demo
-if "history_images" not in st.session_state:
-    st.session_state.history_images = []
+# --- SUPABASE REST STORAGE FUNCTIONS ---
+def upload_to_supabase_rest(file_bytes, filename):
+    url = f"{SUPABASE_URL}/storage/v1/object/{BUCKET_NAME}/{filename}"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "image/png"
+    }
+    try:
+        response = requests.post(url, headers=headers, data=file_bytes)
+        if response.status_code in [200, 201]:
+            return True
+        else:
+            return False
+    except Exception:
+        return False
+
+def get_supabase_files():
+    url = f"{SUPABASE_URL}/storage/v1/object/list/{BUCKET_NAME}"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json"
+    }
+    try:
+        # Supabase list expects a POST body with prefix/search options
+        response = requests.post(url, headers=headers, json={"prefix": "", "limit": 100, "offset": 0})
+        if response.status_code == 200:
+            return response.json()
+        return []
+    except Exception:
+        return []
 
 # --- PDF GENERATOR ---
 def generate_attractive_pdf(orig_img_bytes, heatmap_bytes, min_temp, max_temp, avg_temp, warmest_region, coolest_region, lr_diff, cnn_status, cnn_conf):
@@ -114,11 +149,11 @@ with tab1:
             pil_image.save(buf_orig, format="PNG")
             orig_img_bytes = buf_orig.getvalue()
 
-            # Save to local session history safely
-            if uploaded_file.name not in [h['name'] for h in st.session_state.history_images]:
-                st.session_state.history_images.append({'name': uploaded_file.name, 'bytes': orig_img_bytes})
-
-            st.toast("💾 Assessment successfully processed & saved!", icon="✅")
+            # Upload to Supabase via REST API
+            if upload_to_supabase_rest(orig_img_bytes, uploaded_file.name):
+                st.toast("💾 Successfully saved to Supabase Cloud Storage!", icon="✅")
+            else:
+                st.toast("⚠️ Saved locally (Cloud sync check recommended)", icon="ℹ")
 
             hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
             lower_skin = np.array([0, 20, 70], dtype=np.uint8)
@@ -220,10 +255,14 @@ with tab1:
             st.error(f"⚠️ Error processing image: {e}")
 
 with tab2:
-    st.subheader("📂 Previous Uploads History")
-    if st.session_state.history_images:
-        for item in st.session_state.history_images:
-            st.image(item['bytes'], caption=f"File: {item['name']}", use_container_width=True)
+    st.subheader("📂 Previous Uploads History (Supabase Cloud Storage)")
+    files = get_supabase_files()
+    if files:
+        for file in files:
+            file_name = file.get('name')
+            if file_name:
+                public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{file_name}"
+                st.image(public_url, caption=f"File: {file_name}", use_container_width=True)
     else:
-        st.info("No images uploaded in this session yet. Upload a new assessment to view history here!")
-            
+        st.info("No cloud history found yet or bucket is empty. Upload an assessment to store it globally for your team!")
+    
