@@ -98,7 +98,7 @@ USER_HISTORY_DIR = os.path.join("saved_reports", st.session_state.username)
 os.makedirs(USER_HISTORY_DIR, exist_ok=True)
 
 st.title("🌡 AI Thermal Health Assessment Dashboard")
-st.write("Upload or capture thermal images to extract metrics, run AI classification, view reports, and export PDF summaries.")
+st.write("Capture live photos using your webcam or upload thermal files to extract metrics, run AI classification, and export PDF summaries.")
 
 st.sidebar.header("⚙️ Settings & Options")
 selected_cmap = st.sidebar.selectbox("Choose Heatmap Colormap:", ["jet", "inferno", "plasma", "viridis", "magma"], key="cmap_select")
@@ -262,11 +262,15 @@ def analyze_and_display(pil_image, filename_key=""):
     )
 
 with tab1:
-    st.subheader("📸 Upload or Capture Thermal Image")
-    st.info("💡 **Tip:** On mobile devices or laptops, clicking below will let you choose an image file **or** instantly snap a live photo using your built-in camera!")
+    st.subheader("📸 Choose Input Method")
+    input_mode = st.radio("Select how you want to add an image:", ["📁 Upload File", "📷 Live Webcam Capture"], horizontal=True)
     
-    # Universal file uploader that natively triggers phone camera / gallery without permission errors
-    uploaded_file = st.file_uploader("Upload or Capture Image", type=["jpg", "jpeg", "png", "webp"], key="file_input")
+    uploaded_file = None
+    if input_mode == "📁 Upload File":
+        uploaded_file = st.file_uploader("Upload image from your device", type=["jpg", "jpeg", "png", "webp"], key="file_input")
+    else:
+        st.info("💡 Click **'Allow'** if your browser prompts for camera access permissions.")
+        uploaded_file = st.camera_input("Take a live photo using your webcam")
 
     if uploaded_file is not None:
         try:
@@ -277,7 +281,7 @@ with tab1:
             pil_image.save(buf_orig, format="PNG")
             orig_img_bytes = buf_orig.getvalue()
 
-            file_name = getattr(uploaded_file, "name", f"scan_{st.session_state.username}.png")
+            file_name = getattr(uploaded_file, "name", f"webcam_capture_{st.session_state.username}.png")
             file_path = os.path.join(USER_HISTORY_DIR, file_name)
             
             if not os.path.exists(file_path):
@@ -308,3 +312,4 @@ with tab2:
             st.info("No uploads found for your account yet.")
     else:
         st.info("No history folder found.")
+                
