@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImagef
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
@@ -259,7 +259,7 @@ if st.button("💾 Save Scan to Database"):
             """),
             {
                 "username": st.session_state.get("username", "unknown"),
-                "avg_temperature": float(avg_temperature),
+                "avg_temperature": float(avg_temp),
                 "min_temperature": float(min_temp),
                 "max_temperature": float(max_temp),
                 "asymmetry": float(lr_diff),
