@@ -1,3 +1,4 @@
+import os
 import io
 import cv2
 import numpy as np
@@ -11,6 +12,10 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 st.set_page_config(page_title="AI Thermal Health Assessment Dashboard", layout="centered")
+
+# --- SHARED SERVER STORAGE (Visible across all devices using the app) ---
+HISTORY_DIR = "saved_reports"
+os.makedirs(HISTORY_DIR, exist_ok=True)
 
 # --- AUTHENTICATION LOGIC ---
 if "authenticated" not in st.session_state:
@@ -44,10 +49,6 @@ st.sidebar.header("⚙️ Settings & Options")
 selected_cmap = st.sidebar.selectbox("Choose Heatmap Colormap:", ["jet", "inferno", "plasma", "viridis", "magma"], key="cmap_select")
 
 tab1, tab2 = st.tabs(["New Assessment", "Past History"])
-
-# Global session storage to hold history safely during runtime
-if "global_history" not in st.session_state:
-    st.session_state.global_history = []
 
 # --- PDF GENERATOR ---
 def generate_attractive_pdf(orig_img_bytes, heatmap_bytes, min_temp, max_temp, avg_temp, warmest_region, coolest_region, lr_diff, cnn_status, cnn_conf):
@@ -114,11 +115,13 @@ with tab1:
             pil_image.save(buf_orig, format="PNG")
             orig_img_bytes = buf_orig.getvalue()
 
-            # Safely save to session history
-            if uploaded_file.name not in [h['name'] for h in st.session_state.global_history]:
-                st.session_state.global_history.append({'name': uploaded_file.name, 'bytes': orig_img_bytes})
+            # Save to shared server folder so anyone opening the app sees it
+            file_path = os.path.join(HISTORY_DIR, uploaded_file.name)
+            if not os.path.exists(file_path):
+                with open(file_path, "wb") as f:
+                    f.write(orig_img_bytes)
 
-            st.toast("💾 Assessment successfully processed!", icon="✅")
+            st.toast("💾 Saved successfully to shared app storage!", icon="✅")
 
             hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
             lower_skin = np.array([0, 20, 70], dtype=np.uint8)
@@ -220,10 +223,16 @@ with tab1:
             st.error(f"⚠️ Error processing image: {e}")
 
 with tab2:
-    st.subheader("📂 Previous Uploads History")
-    if st.session_state.global_history:
-        for item in st.session_state.global_history:
-            st.image(item['bytes'], caption=f"File: {item['name']}", use_container_width=True)
+    st.subheader("📂 Previous Uploads History (Shared Across Devices)")
+    if os.path.exists(HISTORY_DIR):
+        files = sorted(os.listdir(HISTORY_DIR))
+        if files:
+            for file_name in files:
+                if file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+                    img_path = os.path.join(HISTORY_DIR, file_name)
+                    st.image(img_path, caption=f"File: {file_name}", use_container_width=True)
+        else:
+            st.info("No uploads found yet. Upload an image in 'New Assessment' to see it here!")
     else:
-        st.info("No images uploaded yet. Upload a new assessment to view history here!")
+        st.info("No history folder found.")
         
