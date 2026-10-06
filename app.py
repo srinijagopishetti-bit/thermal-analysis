@@ -141,6 +141,113 @@ def generate_attractive_pdf(orig_img_bytes, heatmap_bytes, min_temp, max_temp, a
     buffer.seek(0)
     return buffer
 
+# --- REUSABLE ANALYSIS FUNCTION ---
+def analyze_and_display(pil_image, filename_key=""):
+    image = np.array(pil_image)
+    image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    
+    buf_orig = io.BytesIO()
+    pil_image.save(buf_orig, format="PNG")
+    orig_img_bytes = buf_orig.getvalue()
+
+    hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+    lower_skin = np.array([0, 20, 70], dtype=np.uint8)
+    upper_skin = np.array([20, 255, 255], dtype=np.uint8)
+    skin_mask = cv2.inRange(hsv, lower_skin, upper_skin)
+    non_black_mask = cv2.inRange(gray, 45, 255)
+
+    if np.sum(skin_mask > 0) > (0.05 * gray.size):
+        body_mask = cv2.bitwise_and(skin_mask, non_black_mask)
+    else:
+        body_mask = non_black_mask
+
+    kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    body_mask = cv2.morphologyEx(body_mask, cv2.MORPH_OPEN, kernel_open, iterations=2)
+    body_mask = cv2.morphologyEx(body_mask, cv2.MORPH_CLOSE, kernel_close, iterations=1)
+
+    body_pixels = gray[body_mask == 255]
+    if len(body_pixels) == 0:
+        body_pixels = gray.flatten()
+
+    min_temp = round(25.0 + (float(np.min(body_pixels)) / 255.0) * 13.0, 1)
+    max_temp = round(25.0 + (float(np.max(body_pixels)) / 255.0) * 13.0, 1)
+    avg_temp = round(25.0 + (float(np.mean(body_pixels)) / 255.0) * 13.0, 1)
+    
+    h, w = gray.shape
+    top_mask = (body_mask[0:int(h/3), :] == 255)
+    mid_mask = (body_mask[int(h/3):int(2*h/3), :] == 255)
+    bot_mask = (body_mask[int(2*h/3):h, :] == 255)
+
+    top_region = np.mean(gray[0:int(h/3), :][top_mask]) if np.any(top_mask) else 0
+    mid_region = np.mean(gray[int(h/3):int(2*h/3), :][mid_mask]) if np.any(mid_mask) else 0
+    bot_region = np.mean(gray[int(2*h/3):h, :][bot_mask]) if np.any(bot_mask) else 0
+
+    regions = {"Upper Zone": top_region, "Middle Zone": mid_region, "Lower Zone": bot_region}
+    warmest_region = max(regions, key=regions.get)
+    coolest_region = min(regions, key=regions.get)
+
+    left_mask = (body_mask[:, 0:int(w/2)] == 255)
+    right_mask = (body_mask[:, int(w/2):w] == 255)
+    left_side = np.mean(gray[:, 0:int(w/2)][left_mask]) if np.any(left_mask) else 0
+    right_side = np.mean(gray[:, int(w/2):w][right_mask]) if np.any(right_mask) else 0
+    lr_diff = round(abs(left_side - right_side) * (13.0 / 255.0), 1)
+
+    classes = ["Normal Thermal Pattern", "Elevated Local Warming", "Thermal Anomaly Detected"]
+    class_idx = int(np.mean(body_pixels) % 3)
+    cnn_status = classes[class_idx]
+    cnn_conf = round(85.0 + (np.mean(body_pixels) % 12.5), 1)
+
+    st.markdown("---")
+    st.subheader("🖼️ Thermal Visualizations")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("##### 1. Original Image")
+        st.image(image_bgr, channels="BGR", use_container_width=True)
+        
+    with c2:
+        st.markdown(f"##### 2. {selected_cmap.upper()} Heatmap")
+        fig1, ax1 = plt.subplots(figsize=(4, 4))
+        masked_float = np.where(body_mask == 255, gray.astype(float), np.nan)
+        cax1 = ax1.imshow(masked_float, cmap=selected_cmap)
+        fig1.colorbar(cax1, label="Temp Scale (°C)", shrink=0.8)
+        ax1.set_facecolor('black')
+        ax1.axis("off")
+        st.pyplot(fig1)
+        
+        buf_heat = io.BytesIO()
+        fig1.savefig(buf_heat, format="png", bbox_inches='tight', facecolor='black')
+        heatmap_bytes = buf_heat.getvalue()
+
+    st.markdown("---")
+    st.subheader("📋 Thermal Diagnostic Analysis Report")
+    st.markdown(f"""
+    - **Temperature Range:** {min_temp}°C – {max_temp}°C *(Normal Reference: 25.0°C – 38.0°C)*
+    - **Average Temperature:** {avg_temp}°C *(Normal Reference: 36.1°C – 37.2°C)*
+    - **Warmest Zone:** {warmest_region}
+    - **Coolest Zone:** {coolest_region}
+    - **Bilateral Asymmetry:** {lr_diff}°C *(Threshold: < 1.5°C)*
+    - **AI Model Status:** **{cnn_status}** (Confidence: {cnn_conf}%)
+    """)
+
+    pdf_data = generate_attractive_pdf(
+        orig_img_bytes, heatmap_bytes, 
+        min_temp, max_temp, avg_temp, 
+        warmest_region, coolest_region, 
+        lr_diff, cnn_status, cnn_conf
+    )
+    
+    st.markdown("---")
+    st.download_button(
+        label="📥 Download Graphical Diagnostic PDF Report",
+        data=pdf_data,
+        file_name=f"Thermal_Report_{filename_key}.pdf",
+        mime="application/pdf",
+        key=f"btn_download_pdf_{filename_key}"
+    )
+
 with tab1:
     uploaded_file = st.file_uploader("📸 Upload Image from Gallery or Camera", type=["jpg", "jpeg", "png", "webp"], key="file_input")
 
@@ -149,137 +256,37 @@ with tab1:
             pil_image = Image.open(uploaded_file).convert("RGB")
             pil_image.thumbnail((800, 800))
             
-            image = np.array(pil_image)
-            image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-            gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-            
             buf_orig = io.BytesIO()
             pil_image.save(buf_orig, format="PNG")
             orig_img_bytes = buf_orig.getvalue()
 
-            # Save specifically to this user's private folder
             file_path = os.path.join(USER_HISTORY_DIR, uploaded_file.name)
             if not os.path.exists(file_path):
                 with open(file_path, "wb") as f:
                     f.write(orig_img_bytes)
 
             st.toast("💾 Saved successfully to your account storage!", icon="✅")
-
-            hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
-            lower_skin = np.array([0, 20, 70], dtype=np.uint8)
-            upper_skin = np.array([20, 255, 255], dtype=np.uint8)
-            skin_mask = cv2.inRange(hsv, lower_skin, upper_skin)
-            non_black_mask = cv2.inRange(gray, 45, 255)
-
-            if np.sum(skin_mask > 0) > (0.05 * gray.size):
-                body_mask = cv2.bitwise_and(skin_mask, non_black_mask)
-            else:
-                body_mask = non_black_mask
-
-            kernel_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-            kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-            body_mask = cv2.morphologyEx(body_mask, cv2.MORPH_OPEN, kernel_open, iterations=2)
-            body_mask = cv2.morphologyEx(body_mask, cv2.MORPH_CLOSE, kernel_close, iterations=1)
-
-            body_pixels = gray[body_mask == 255]
-            if len(body_pixels) == 0:
-                body_pixels = gray.flatten()
-
-            min_temp = round(25.0 + (float(np.min(body_pixels)) / 255.0) * 13.0, 1)
-            max_temp = round(25.0 + (float(np.max(body_pixels)) / 255.0) * 13.0, 1)
-            avg_temp = round(25.0 + (float(np.mean(body_pixels)) / 255.0) * 13.0, 1)
-            
-            h, w = gray.shape
-            top_mask = (body_mask[0:int(h/3), :] == 255)
-            mid_mask = (body_mask[int(h/3):int(2*h/3), :] == 255)
-            bot_mask = (body_mask[int(2*h/3):h, :] == 255)
-
-            top_region = np.mean(gray[0:int(h/3), :][top_mask]) if np.any(top_mask) else 0
-            mid_region = np.mean(gray[int(h/3):int(2*h/3), :][mid_mask]) if np.any(mid_mask) else 0
-            bot_region = np.mean(gray[int(2*h/3):h, :][bot_mask]) if np.any(bot_mask) else 0
-
-            regions = {"Upper Zone": top_region, "Middle Zone": mid_region, "Lower Zone": bot_region}
-            warmest_region = max(regions, key=regions.get)
-            coolest_region = min(regions, key=regions.get)
-
-            left_mask = (body_mask[:, 0:int(w/2)] == 255)
-            right_mask = (body_mask[:, int(w/2):w] == 255)
-            left_side = np.mean(gray[:, 0:int(w/2)][left_mask]) if np.any(left_mask) else 0
-            right_side = np.mean(gray[:, int(w/2):w][right_mask]) if np.any(right_mask) else 0
-            lr_diff = round(abs(left_side - right_side) * (13.0 / 255.0), 1)
-
-            classes = ["Normal Thermal Pattern", "Elevated Local Warming", "Thermal Anomaly Detected"]
-            class_idx = int(np.mean(body_pixels) % 3)
-            cnn_status = classes[class_idx]
-            cnn_conf = round(85.0 + (np.mean(body_pixels) % 12.5), 1)
-
-            st.markdown("---")
-            st.subheader("🖼️ Thermal Visualizations")
-            
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("##### 1. Original Image")
-                st.image(image_bgr, channels="BGR", use_container_width=True)
-                
-            with c2:
-                st.markdown(f"##### 2. {selected_cmap.upper()} Heatmap")
-                fig1, ax1 = plt.subplots(figsize=(4, 4))
-                masked_float = np.where(body_mask == 255, gray.astype(float), np.nan)
-                cax1 = ax1.imshow(masked_float, cmap=selected_cmap)
-                fig1.colorbar(cax1, label="Temp Scale (°C)", shrink=0.8)
-                ax1.set_facecolor('black')
-                ax1.axis("off")
-                st.pyplot(fig1)
-                
-                buf_heat = io.BytesIO()
-                fig1.savefig(buf_heat, format="png", bbox_inches='tight', facecolor='black')
-                heatmap_bytes = buf_heat.getvalue()
-
-            # --- DISPLAY ANALYSIS REPORT DIRECTLY ON SCREEN ---
-            st.markdown("---")
-            st.subheader("📋 Thermal Diagnostic Analysis Report")
-            
-            st.markdown(f"""
-            - **Temperature Range:** {min_temp}°C – {max_temp}°C *(Normal Reference: 25.0°C – 38.0°C)*
-            - **Average Temperature:** {avg_temp}°C *(Normal Reference: 36.1°C – 37.2°C)*
-            - **Warmest Zone:** {warmest_region}
-            - **Coolest Zone:** {coolest_region}
-            - **Bilateral Asymmetry:** {lr_diff}°C *(Threshold: < 1.5°C)*
-            - **AI Model Status:** **{cnn_status}** (Confidence: {cnn_conf}%)
-            """)
-
-            # Generate the PDF file for downloading
-            pdf_data = generate_attractive_pdf(
-                orig_img_bytes, heatmap_bytes, 
-                min_temp, max_temp, avg_temp, 
-                warmest_region, coolest_region, 
-                lr_diff, cnn_status, cnn_conf
-            )
-            
-            st.markdown("---")
-            # --- DOWNLOAD BUTTON RIGHT BELOW THE ANALYSIS REPORT ---
-            st.download_button(
-                label="📥 Download Graphical Diagnostic PDF Report",
-                data=pdf_data,
-                file_name="Thermal_Diagnostic_Report.pdf",
-                mime="application/pdf",
-                key="btn_download_pdf"
-            )
+            analyze_and_display(pil_image, filename_key=uploaded_file.name)
 
         except Exception as e:
             st.error(f"⚠️ Error processing image: {e}")
 
 with tab2:
-    st.subheader(f"📂 Past History for ({st.session_state.username})")
+    st.subheader(f"📂 Past History & Reports for ({st.session_state.username})")
     if os.path.exists(USER_HISTORY_DIR):
         files = sorted(os.listdir(USER_HISTORY_DIR))
         if files:
-            for file_name in files:
-                if file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
-                    img_path = os.path.join(USER_HISTORY_DIR, file_name)
-                    st.image(img_path, caption=f"File: {file_name}", use_container_width=True)
+            valid_files = [f for f in files if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
+            if valid_files:
+                selected_history_file = st.selectbox("Select a past scan file to view its full report:", valid_files)
+                if selected_history_file:
+                    selected_path = os.path.join(USER_HISTORY_DIR, selected_history_file)
+                    hist_pil_image = Image.open(selected_path).convert("RGB")
+                    analyze_and_display(hist_pil_image, filename_key=f"hist_{selected_history_file}")
+            else:
+                st.info("No scan images found in your history folder.")
         else:
             st.info("No uploads found for your account yet.")
     else:
         st.info("No history folder found.")
-                
+        
