@@ -9,22 +9,8 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from supabase import create_client, Client
-
-# --- SUPABASE CONFIGURATION ---
-SUPABASE_URL = "https://kaiqvqsnovwdzbxwckfm.supabase.co"  
-SUPABASE_KEY = "sb_publishable_qrxHio8zUMmAiihzDLjLZw_ozLSBHvr"             
 
 st.set_page_config(page_title="AI Thermal Health Assessment Dashboard", layout="centered")
-
-@st.cache_resource
-def init_supabase():
-    try:
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception:
-        return None
-
-supabase = init_supabase()
 
 # --- AUTHENTICATION LOGIC ---
 if "authenticated" not in st.session_state:
@@ -59,18 +45,9 @@ selected_cmap = st.sidebar.selectbox("Choose Heatmap Colormap:", ["jet", "infern
 
 tab1, tab2 = st.tabs(["New Assessment", "Past History"])
 
-def upload_to_supabase(file_bytes, filename):
-    if supabase is None:
-        return False
-    try:
-        supabase.storage.from_("thermal-images").upload(
-            filename, 
-            file_bytes, 
-            file_options={"upsert": "true"}
-        )
-        return True
-    except Exception:
-        return False
+# Session storage for history demo
+if "history_images" not in st.session_state:
+    st.session_state.history_images = []
 
 # --- PDF GENERATOR ---
 def generate_attractive_pdf(orig_img_bytes, heatmap_bytes, min_temp, max_temp, avg_temp, warmest_region, coolest_region, lr_diff, cnn_status, cnn_conf):
@@ -137,10 +114,11 @@ with tab1:
             pil_image.save(buf_orig, format="PNG")
             orig_img_bytes = buf_orig.getvalue()
 
-            if upload_to_supabase(orig_img_bytes, uploaded_file.name):
-                st.toast("💾 Saved to Supabase Cloud Storage!", icon="✅")
-            else:
-                st.toast("⚠️ Saved locally (Supabase upload pending)", icon="ℹ")
+            # Save to local session history safely
+            if uploaded_file.name not in [h['name'] for h in st.session_state.history_images]:
+                st.session_state.history_images.append({'name': uploaded_file.name, 'bytes': orig_img_bytes})
+
+            st.toast("💾 Assessment successfully processed & saved!", icon="✅")
 
             hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
             lower_skin = np.array([0, 20, 70], dtype=np.uint8)
@@ -242,18 +220,10 @@ with tab1:
             st.error(f"⚠️ Error processing image: {e}")
 
 with tab2:
-    st.subheader("📂 Previous Uploads History (Supabase Cloud)")
-    if supabase is not None:
-        try:
-            files = supabase.storage.from_("thermal-images").list()
-            if files:
-                for file in files:
-                    img_url = supabase.storage.from_("thermal-images").get_public_url(file['name'])
-                    st.image(img_url, caption=f"File: {file['name']}", use_container_width=True)
-            else:
-                st.info("No past images found in Supabase storage yet.")
-        except Exception:
-            st.warning("Could not fetch history from Supabase storage.")
+    st.subheader("📂 Previous Uploads History")
+    if st.session_state.history_images:
+        for item in st.session_state.history_images:
+            st.image(item['bytes'], caption=f"File: {item['name']}", use_container_width=True)
     else:
-        st.warning("Supabase is not connected.")
-        
+        st.info("No images uploaded in this session yet. Upload a new assessment to view history here!")
+            
