@@ -80,7 +80,7 @@ def logout_func():
 st.sidebar.button("🔒 Logout", key="btn_logout_main", on_click=logout_func)
 st.sidebar.info(f"Logged in as: **{st.session_state.username}**")
 
-# --- SYSTEM USER ANALYTICS IN SIDEBAR (Faculty Demo Feature) ---
+# --- SYSTEM USER ANALYTICS IN SIDEBAR ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("👥 System User Analytics")
 all_users = load_users()
@@ -98,7 +98,7 @@ USER_HISTORY_DIR = os.path.join("saved_reports", st.session_state.username)
 os.makedirs(USER_HISTORY_DIR, exist_ok=True)
 
 st.title("🌡 AI Thermal Health Assessment Dashboard")
-st.write("Upload thermal or standard images to extract temperature metrics, perform pattern classification, and export graphical reports.")
+st.write("Upload or capture thermal images to extract metrics, run AI classification, view reports, and export PDF summaries.")
 
 st.sidebar.header("⚙️ Settings & Options")
 selected_cmap = st.sidebar.selectbox("Choose Heatmap Colormap:", ["jet", "inferno", "plasma", "viridis", "magma"], key="cmap_select")
@@ -262,7 +262,14 @@ def analyze_and_display(pil_image, filename_key=""):
     )
 
 with tab1:
-    uploaded_file = st.file_uploader("📸 Upload Image from Gallery or Camera", type=["jpg", "jpeg", "png", "webp"], key="file_input")
+    st.subheader("📸 Choose Image Input Method")
+    input_method = st.radio("Select Source:", ["Upload Image File", "Use Live Camera (Webcam/Mobile)"], horizontal=True)
+    
+    uploaded_file = None
+    if input_method == "Upload Image File":
+        uploaded_file = st.file_uploader("Upload image from your device", type=["jpg", "jpeg", "png", "webp"], key="file_input")
+    else:
+        uploaded_file = st.camera_input("Capture live photo using your camera")
 
     if uploaded_file is not None:
         try:
@@ -273,13 +280,16 @@ with tab1:
             pil_image.save(buf_orig, format="PNG")
             orig_img_bytes = buf_orig.getvalue()
 
-            file_path = os.path.join(USER_HISTORY_DIR, uploaded_file.name)
+            # Handle file name dynamically for uploads vs camera captures
+            file_name = getattr(uploaded_file, "name", f"camera_capture_{st.session_state.username}.png")
+            file_path = os.path.join(USER_HISTORY_DIR, file_name)
+            
             if not os.path.exists(file_path):
                 with open(file_path, "wb") as f:
                     f.write(orig_img_bytes)
 
             st.toast("💾 Saved successfully to your account storage!", icon="✅")
-            analyze_and_display(pil_image, filename_key=uploaded_file.name)
+            analyze_and_display(pil_image, filename_key=file_name)
 
         except Exception as e:
             st.error(f"⚠️ Error processing image: {e}")
@@ -302,4 +312,3 @@ with tab2:
             st.info("No uploads found for your account yet.")
     else:
         st.info("No history folder found.")
-            
