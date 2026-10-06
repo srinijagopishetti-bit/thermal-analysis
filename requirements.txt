@@ -4,5 +4,5 @@ numpy
 matplotlib
 pillow
 reportlab
-psycopg2-binary>=2.9.6
-sqlalchemy>=2.0.0
+psycopg[binary]>=3.2
+SQLAlchemy>=2.1
