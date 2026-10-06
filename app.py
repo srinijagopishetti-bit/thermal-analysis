@@ -259,7 +259,7 @@ if st.button("💾 Save Scan to Database"):
             """),
             {
                 "username": st.session_state.get("username", "unknown"),
-                "avg_temperature": float(avg_temp),
+                "avg_temperature": float(avg_temperature),
                 "min_temperature": float(min_temp),
                 "max_temperature": float(max_temp),
                 "asymmetry": float(lr_diff),
