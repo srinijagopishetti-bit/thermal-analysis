@@ -9,11 +9,24 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+from supabase import create_client
 
-# --- PAGE CONFIGURATION ---
+# --- 1. SUPABASE CONFIGURATION (మీ వివరాలు విజయవంతంగా సెట్ చేయబడ్డాయి) ---
+SUPABASE_URL = "Https://kaiqvqsnovwdzbxwckfm.supabase.co"  
+SUPABASE_KEY = "sb_publishable_qrxHio8zUMmAiihzDLjLZw_ozLSBHvr"             
+
 st.set_page_config(page_title="AI Thermal Health Assessment Dashboard", layout="centered")
 
-# --- AUTHENTICATION LOGIC ---
+@st.cache_resource
+def init_supabase():
+    try:
+        return create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception:
+        return None
+
+supabase = init_supabase()
+
+# --- 2. AUTHENTICATION LOGIC ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -36,7 +49,7 @@ if not st.session_state.authenticated:
                 st.error("Invalid Username or Password")
     st.stop()
 
-# --- MAIN DASHBOARD & TABS (After Login) ---
+# --- 3. MAIN DASHBOARD & TABS ---
 st.sidebar.button("🔒 Logout", key="btn_logout_main", on_click=lambda: st.session_state.update(authenticated=False))
 
 st.title("🌡️ AI Thermal Health Assessment Dashboard")
@@ -46,6 +59,19 @@ st.sidebar.header("⚙️ Settings & Options")
 selected_cmap = st.sidebar.selectbox("Choose Heatmap Colormap:", ["jet", "inferno", "plasma", "viridis", "magma"], key="cmap_select")
 
 tab1, tab2 = st.tabs(["New Assessment", "Past History"])
+
+def upload_to_supabase(file_bytes, filename):
+    if supabase is None:
+        return False
+    try:
+        supabase.storage.from_("thermal-images").upload(
+            filename, 
+            file_bytes, 
+            file_options={"upsert": "true"}
+        )
+        return True
+    except Exception:
+        return False
 
 # --- PDF GENERATOR ---
 def generate_attractive_pdf(orig_img_bytes, heatmap_bytes, min_temp, max_temp, avg_temp, warmest_region, coolest_region, lr_diff, cnn_status, cnn_conf):
@@ -111,6 +137,9 @@ with tab1:
             buf_orig = io.BytesIO()
             pil_image.save(buf_orig, format="PNG")
             orig_img_bytes = buf_orig.getvalue()
+
+            if upload_to_supabase(orig_img_bytes, uploaded_file.name):
+                st.toast("💾 Record successfully saved to Supabase Cloud Storage!", icon="✅")
 
             hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
             lower_skin = np.array([0, 20, 70], dtype=np.uint8)
@@ -212,6 +241,18 @@ with tab1:
             st.error(f"⚠️ Error processing image: {e}")
 
 with tab2:
-    st.subheader("📂 Previous History")
-    st.info("💡 Assessment session logs are tracked securely per login session.")
+    st.subheader("📂 Previous Uploads History (Supabase Cloud)")
+    if supabase:
+        try:
+            files = supabase.storage.from_("thermal-images").list()
+            if files:
+                for file in files:
+                    img_url = supabase.storage.from_("thermal-images").get_public_url(file['name'])
+                    st.image(img_url, caption=f"File: {file['name']}", use_container_width=True)
+            else:
+                st.info("No past images found in Supabase storage yet. Upload a new assessment to see it here!")
+        except Exception as e:
+            st.warning(f"Could not load history. Please ensure bucket 'thermal-images' exists and is public.")
+    else:
+        st.warning("Supabase credentials not configured.")
     
