@@ -11,7 +11,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from supabase import create_client
 
-# --- 1. SUPABASE CONFIGURATION (మీ వివరాలు విజయవంతంగా సెట్ చేయబడ్డాయి) ---
+# --- 1. SUPABASE CONFIGURATION ---
 SUPABASE_URL = "https://kaiqvqsnovwdzbxwckfm.supabase.co"  
 SUPABASE_KEY = "sb_publishable_qrxHio8zUMmAiihzDLjLZw_ozLSBHvr"             
 
@@ -20,7 +20,8 @@ st.set_page_config(page_title="AI Thermal Health Assessment Dashboard", layout="
 @st.cache_resource
 def init_supabase():
     try:
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
+        client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        return client
     except Exception:
         return None
 
@@ -52,7 +53,7 @@ if not st.session_state.authenticated:
 # --- 3. MAIN DASHBOARD & TABS ---
 st.sidebar.button("🔒 Logout", key="btn_logout_main", on_click=lambda: st.session_state.update(authenticated=False))
 
-st.title("🌡️ AI Thermal Health Assessment Dashboard")
+st.title("🌡️️ AI Thermal Health Assessment Dashboard")
 st.write("Upload thermal or standard images to extract temperature metrics, perform pattern classification, and export graphical reports.")
 
 st.sidebar.header("⚙️ Settings & Options")
@@ -242,7 +243,7 @@ with tab1:
 
 with tab2:
     st.subheader("📂 Previous Uploads History (Supabase Cloud)")
-    if supabase:
+    if supabase is not None:
         try:
             files = supabase.storage.from_("thermal-images").list()
             if files:
@@ -252,7 +253,7 @@ with tab2:
             else:
                 st.info("No past images found in Supabase storage yet. Upload a new assessment to see it here!")
         except Exception as e:
-            st.warning(f"Could not load history. Please ensure bucket 'thermal-images' exists and is public.")
+            st.warning(f"Could not load history from Supabase bucket.")
     else:
-        st.warning("Supabase credentials not configured.")
-    
+        st.warning("Supabase connection not established. Please check credentials or requirements.")
+            
