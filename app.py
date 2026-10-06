@@ -11,15 +11,8 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from sqlalchemy import text
 
 st.set_page_config(page_title="AI Thermal Health Assessment Dashboard", layout="centered")
-
-# --- POSTGRESQL CONNECTION ---
-try:
-    conn = st.connection("postgresql", type="sql")
-except Exception as e:
-    st.error(f"Database connection error: {e}")
 
 # --- DATABASE FILE FOR USERS ---
 USERS_FILE = "users_db.json"
@@ -252,30 +245,6 @@ def analyze_and_display(pil_image, filename_key=""):
     - **AI Model Status:** **{cnn_status}** (Confidence: {cnn_conf}%)
     """)
 
-    # --- SAVE TO POSTGRESQL DATABASE BUTTON ---
-    if st.button("💾 Save Scan to Database", key=f"btn_save_db_{filename_key}"):
-        try:
-            with conn.session as session:
-                session.execute(
-                    text("""
-                        INSERT INTO thermal_scans 
-                        (username, avg_temperature, min_temperature, max_temperature, asymmetry, diagnosis)
-                        VALUES (:username, :avg_temperature, :min_temperature, :max_temperature, :asymmetry, :diagnosis)
-                    """),
-                    {
-                        "username": st.session_state.get("username", "unknown"),
-                        "avg_temperature": float(avg_temp),
-                        "min_temperature": float(min_temp),
-                        "max_temperature": float(max_temp),
-                        "asymmetry": float(lr_diff),
-                        "diagnosis": str(cnn_status)
-                    }
-                )
-                session.commit()
-            st.success("✅ Scan successfully saved to PostgreSQL database!")
-        except Exception as db_err:
-            st.error(f"⚠️ Database insert failed (Make sure 'thermal_scans' table exists): {db_err}")
-
     # --- PDF DOWNLOAD BUTTON ---
     pdf_data = generate_attractive_pdf(
         orig_img_bytes, heatmap_bytes, 
@@ -344,4 +313,4 @@ with tab2:
             st.info("No uploads found for your account yet.")
     else:
         st.info("No history folder found.")
-        
+    
