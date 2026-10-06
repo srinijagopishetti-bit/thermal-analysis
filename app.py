@@ -247,7 +247,7 @@ def analyze_and_display(pil_image, filename_key=""):
     - **Bilateral Asymmetry:** {lr_diff}°C *(Threshold: < 1.5°C)*
     - **AI Model Status:** **{cnn_status}** (Confidence: {cnn_conf}%)
     """)
-   if st.button("💾 Save Scan to Database"):
+ if st.button("💾 Save Scan to Database"):
     from sqlalchemy import text
     with conn.session as session:
         session.execute(
