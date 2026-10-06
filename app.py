@@ -9,9 +9,9 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from supabase import create_client
+from supabase import create_client, Client
 
-# --- 1. SUPABASE CONFIGURATION ---
+# --- SUPABASE CONFIGURATION ---
 SUPABASE_URL = "https://kaiqvqsnovwdzbxwckfm.supabase.co"  
 SUPABASE_KEY = "sb_publishable_qrxHio8zUMmAiihzDLjLZw_ozLSBHvr"             
 
@@ -20,14 +20,13 @@ st.set_page_config(page_title="AI Thermal Health Assessment Dashboard", layout="
 @st.cache_resource
 def init_supabase():
     try:
-        client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        return client
+        return create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception:
         return None
 
 supabase = init_supabase()
 
-# --- 2. AUTHENTICATION LOGIC ---
+# --- AUTHENTICATION LOGIC ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -50,10 +49,9 @@ if not st.session_state.authenticated:
                 st.error("Invalid Username or Password")
     st.stop()
 
-# --- 3. MAIN DASHBOARD & TABS ---
 st.sidebar.button("🔒 Logout", key="btn_logout_main", on_click=lambda: st.session_state.update(authenticated=False))
 
-st.title("🌡️️ AI Thermal Health Assessment Dashboard")
+st.title("🌡 AI Thermal Health Assessment Dashboard")
 st.write("Upload thermal or standard images to extract temperature metrics, perform pattern classification, and export graphical reports.")
 
 st.sidebar.header("⚙️ Settings & Options")
@@ -140,7 +138,9 @@ with tab1:
             orig_img_bytes = buf_orig.getvalue()
 
             if upload_to_supabase(orig_img_bytes, uploaded_file.name):
-                st.toast("💾 Record successfully saved to Supabase Cloud Storage!", icon="✅")
+                st.toast("💾 Saved to Supabase Cloud Storage!", icon="✅")
+            else:
+                st.toast("⚠️ Saved locally (Supabase upload pending)", icon="ℹ")
 
             hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
             lower_skin = np.array([0, 20, 70], dtype=np.uint8)
@@ -251,9 +251,9 @@ with tab2:
                     img_url = supabase.storage.from_("thermal-images").get_public_url(file['name'])
                     st.image(img_url, caption=f"File: {file['name']}", use_container_width=True)
             else:
-                st.info("No past images found in Supabase storage yet. Upload a new assessment to see it here!")
-        except Exception as e:
-            st.warning(f"Could not load history from Supabase bucket.")
+                st.info("No past images found in Supabase storage yet.")
+        except Exception:
+            st.warning("Could not fetch history from Supabase storage.")
     else:
-        st.warning("Supabase connection not established. Please check credentials or requirements.")
-            
+        st.warning("Supabase is not connected.")
+        
