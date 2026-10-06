@@ -4,13 +4,11 @@ import json
 import cv2
 import numpy as np
 import streamlit as st
-conn = st.connection("postgresql", type="sql")
-st.success("PostgreSQL connected successfully!")
 import matplotlib.pyplot as plt
 from PIL import Image
 
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImagef
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
@@ -214,7 +212,6 @@ def analyze_and_display(pil_image, filename_key=""):
     cnn_status = classes[class_idx]
     cnn_conf = round(85.0 + (np.mean(body_pixels) % 12.5), 1)
 
-    
     st.markdown("---")
     st.subheader("🖼️ Thermal Visualizations")
     
@@ -247,28 +244,11 @@ def analyze_and_display(pil_image, filename_key=""):
     - **Bilateral Asymmetry:** {lr_diff}°C *(Threshold: < 1.5°C)*
     - **AI Model Status:** **{cnn_status}** (Confidence: {cnn_conf}%)
     """)
-if st.button("💾 Save Scan to Database"):
-    from sqlalchemy import text
-    with conn.session as session:
-        session.execute(
-            text("""
-                INSERT INTO thermal_scans
 
-                (username, avg_temperature, min_temperature, max_temperature, asymmetry, diagnosis)
-                VALUES (:username, :avg_temperature, :min_temperature, :max_temperature, :asymmetry, :diagnosis)
-            """),
-            {
-                "username": st.session_state.get("username", "unknown"),
-                "avg_temperature": float(avg_temp),
-                "min_temperature": float(min_temp),
-                "max_temperature": float(max_temp),
-                "asymmetry": float(lr_diff),
-                "diagnosis": str(cnn_status)
-            }
-        )
-        session.commit()
+    # Optional PostgreSQL Database Integration Hook (Safe placement)
+    # If you have psycopg2 or sqlalchemy configured, you can insert metrics here using avg_temp safely:
+    # e.g., db_insert(st.session_state.username, avg_temp, min_temp, max_temp, cnn_status)
 
-    st.success("✅ Scan saved to PostgreSQL!")
     pdf_data = generate_attractive_pdf(
         orig_img_bytes, heatmap_bytes, 
         min_temp, max_temp, avg_temp, 
@@ -336,4 +316,4 @@ with tab2:
             st.info("No uploads found for your account yet.")
     else:
         st.info("No history folder found.")
-                
+            
