@@ -5,18 +5,22 @@ import cv2
 import numpy as np
 import streamlit as st
 conn = st.connection("postgresql", type="sql")
-conn.query("""
-CREATE TABLE IF NOT EXISTS thermal_scans (
-    id SERIAL PRIMARY KEY,
-    username TEXT,
-    avg_temperature REAL,
-    min_temperature REAL,
-    max_temperature REAL,
-    asymmetry REAL,
-    diagnosis TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-""")
+from sqlalchemy import text
+
+with conn.session as session:
+    session.execute(text("""
+        CREATE TABLE IF NOT EXISTS thermal_scans (
+            id SERIAL PRIMARY KEY,
+            username TEXT,
+            avg_temperature REAL,
+            min_temperature REAL,
+            max_temperature REAL,
+            asymmetry REAL,
+            diagnosis TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    session.commit()
 st.success("PostgreSQL connected successfully!")
 import matplotlib.pyplot as plt
 from PIL import Image
