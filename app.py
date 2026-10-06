@@ -214,6 +214,7 @@ def analyze_and_display(pil_image, filename_key=""):
     cnn_status = classes[class_idx]
     cnn_conf = round(85.0 + (np.mean(body_pixels) % 12.5), 1)
 
+    
     st.markdown("---")
     st.subheader("🖼️ Thermal Visualizations")
     
