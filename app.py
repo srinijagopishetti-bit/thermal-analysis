@@ -4,6 +4,8 @@ import json
 import cv2
 import numpy as np
 import streamlit as st
+conn = st.connection("postgresql", type="sql")
+st.success("PostgreSQL connected successfully!")
 import matplotlib.pyplot as plt
 from PIL import Image
 
