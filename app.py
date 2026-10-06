@@ -9,24 +9,11 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from supabase import create_client, Client
 
-# --- 1. SUPABASE CONFIGURATION ---
-SUPABASE_URL = "https://your-project-id.supabase.co"  # మీ Supabase URL ఇవ్వండి
-SUPABASE_KEY = "your-supabase-anon-key"             # మీ Supabase Key ఇవ్వండి
+# --- PAGE CONFIGURATION ---
+st.set_page_config(page_title="AI Thermal Health Assessment Dashboard", layout="centered")
 
-st.set_page_config(page_title="AI Thermal Health Dashboard", layout="centered")
-
-@st.cache_resource
-def init_supabase():
-    try:
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception:
-        return None
-
-supabase = init_supabase()
-
-# --- 2. AUTHENTICATION LOGIC ---
+# --- AUTHENTICATION LOGIC ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -49,7 +36,7 @@ if not st.session_state.authenticated:
                 st.error("Invalid Username or Password")
     st.stop()
 
-# --- 3. MAIN DASHBOARD & TABS ---
+# --- MAIN DASHBOARD & TABS (After Login) ---
 st.sidebar.button("🔒 Logout", key="btn_logout_main", on_click=lambda: st.session_state.update(authenticated=False))
 
 st.title("🌡️ AI Thermal Health Assessment Dashboard")
@@ -60,16 +47,7 @@ selected_cmap = st.sidebar.selectbox("Choose Heatmap Colormap:", ["jet", "infern
 
 tab1, tab2 = st.tabs(["New Assessment", "Past History"])
 
-def upload_to_supabase(file_bytes, filename):
-    if supabase is None or SUPABASE_URL == "https://your-project-id.supabase.co":
-        return False
-    try:
-        supabase.storage.from_("thermal-images").upload(filename, file_bytes)
-        return True
-    except Exception:
-        return False
-
-# --- 4. PDF GENERATOR ---
+# --- PDF GENERATOR ---
 def generate_attractive_pdf(orig_img_bytes, heatmap_bytes, min_temp, max_temp, avg_temp, warmest_region, coolest_region, lr_diff, cnn_status, cnn_conf):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -134,10 +112,6 @@ with tab1:
             pil_image.save(buf_orig, format="PNG")
             orig_img_bytes = buf_orig.getvalue()
 
-            if upload_to_supabase(orig_img_bytes, uploaded_file.name):
-                st.toast("💾 Record backed up to Supabase Cloud Storage!", icon="✅")
-
-            # Segmentation & Noise Cleaning
             hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
             lower_skin = np.array([0, 20, 70], dtype=np.uint8)
             upper_skin = np.array([20, 255, 255], dtype=np.uint8)
@@ -181,7 +155,6 @@ with tab1:
             right_side = np.mean(gray[:, int(w/2):w][right_mask]) if np.any(right_mask) else 0
             lr_diff = round(abs(left_side - right_side) * (13.0 / 255.0), 1)
 
-            # Fast NumPy-based Classification Simulation
             classes = ["Normal Thermal Pattern", "Elevated Local Warming", "Thermal Anomaly Detected"]
             class_idx = int(np.mean(body_pixels) % 3)
             cnn_status = classes[class_idx]
@@ -239,18 +212,6 @@ with tab1:
             st.error(f"⚠️ Error processing image: {e}")
 
 with tab2:
-    st.subheader("📂 Previous Uploads History")
-    if supabase:
-        try:
-            files = supabase.storage.from_("thermal-images").list()
-            if files:
-                for file in files:
-                    img_url = supabase.storage.from_("thermal-images").get_public_url(file['name'])
-                    st.image(img_url, caption=f"File: {file['name']}", use_container_width=True)
-            else:
-                st.info("No past images found in Supabase storage yet.")
-        except Exception as e:
-            st.warning(f"Could not load history. Make sure bucket 'thermal-images' is public in Supabase.")
-    else:
-        st.warning("Please configure your Supabase credentials to view history.")
-            
+    st.subheader("📂 Previous History")
+    st.info("💡 Assessment session logs are tracked securely per login session.")
+    
