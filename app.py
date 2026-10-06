@@ -5,6 +5,18 @@ import cv2
 import numpy as np
 import streamlit as st
 conn = st.connection("postgresql", type="sql")
+conn.query("""
+CREATE TABLE IF NOT EXISTS thermal_scans (
+    id SERIAL PRIMARY KEY,
+    username TEXT,
+    avg_temperature REAL,
+    min_temperature REAL,
+    max_temperature REAL,
+    asymmetry REAL,
+    diagnosis TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+""")
 st.success("PostgreSQL connected successfully!")
 import matplotlib.pyplot as plt
 from PIL import Image
@@ -246,7 +258,28 @@ def analyze_and_display(pil_image, filename_key=""):
     - **Bilateral Asymmetry:** {lr_diff}°C *(Threshold: < 1.5°C)*
     - **AI Model Status:** **{cnn_status}** (Confidence: {cnn_conf}%)
     """)
+if st.button("💾 Save Scan to Database"):
+    from sqlalchemy import text
 
+    with conn.session as session:
+        session.execute(
+            text("""
+                INSERT INTO thermal_scans
+                (username, avg_temperature, min_temperature, max_temperature, asymmetry, diagnosis)
+                VALUES (:username, :avg_temperature, :min_temperature, :max_temperature, :asymmetry, :diagnosis)
+            """),
+            {
+                "username": st.session_state.get("username", "unknown"),
+                "avg_temperature": float(avg_temp),
+                "min_temperature": float(min_temp),
+                "max_temperature": float(max_temp),
+                "asymmetry": float(lr_diff),
+                "diagnosis": str(cnn_status)
+            }
+        )
+        session.commit()
+
+    st.success("✅ Scan saved to PostgreSQL!")
     pdf_data = generate_attractive_pdf(
         orig_img_bytes, heatmap_bytes, 
         min_temp, max_temp, avg_temp, 
