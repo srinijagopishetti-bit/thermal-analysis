@@ -1,5 +1,6 @@
 import os
 import io
+import json
 import cv2
 import numpy as np
 import streamlit as st
@@ -13,34 +14,75 @@ from reportlab.lib import colors
 
 st.set_page_config(page_title="AI Thermal Health Assessment Dashboard", layout="centered")
 
-# --- SHARED SERVER STORAGE (Visible across all devices using the app) ---
-HISTORY_DIR = "saved_reports"
-os.makedirs(HISTORY_DIR, exist_ok=True)
+# --- DATABASE FILE FOR USERS ---
+USERS_FILE = "users_db.json"
 
-# --- AUTHENTICATION LOGIC ---
+def load_users():
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_user(username, password):
+    users = load_users()
+    users[username] = password
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f)
+
+# --- AUTHENTICATION & REGISTRATION LOGIC ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
+    st.session_state.username = ""
 
 if not st.session_state.authenticated:
-    st.title("🔐 Thermal Health Dashboard - Login")
-    st.caption("Access Restricted: Authorized Medical & Evaluation Personnel Only")
+    st.title("🔐 Thermal Health Dashboard - Access Portal")
     
-    col1, _ = st.columns([1, 2])
-    with col1:
-        username = st.text_input("Username", key="login_user")
-        password = st.text_input("Password", type="password", key="login_pass")
-        login_btn = st.button("🔓 Login to Dashboard", key="btn_login", use_container_width=True)
-        
-        if login_btn:
-            if username == "admin" and password == "Thermal2026!":
+    auth_tab1, auth_tab2 = st.tabs(["🔑 Login", "📝 Create Account (Sign Up)"])
+    
+    with auth_tab1:
+        st.subheader("Login to your account")
+        login_user = st.text_input("Username", key="login_u")
+        login_pass = st.text_input("Password", type="password", key="login_p")
+        if st.button("🔓 Login", key="btn_login_submit", use_container_width=True):
+            users = load_users()
+            if login_user in users and users[login_user] == login_pass:
                 st.session_state.authenticated = True
-                st.success("Login successful!")
+                st.session_state.username = login_user
+                st.success(f"Welcome back, {login_user}!")
                 st.rerun()
             else:
-                st.error("Invalid Username or Password")
+                st.error("Invalid Username or Password. Please check or Register first.")
+                
+    with auth_tab2:
+        st.subheader("Register a new account")
+        reg_user = st.text_input("Choose Username", key="reg_u")
+        reg_pass = st.text_input("Choose Password", type="password", key="reg_p")
+        if st.button("✨ Create Account", key="btn_reg_submit", use_container_width=True):
+            users = load_users()
+            if not reg_user or not reg_pass:
+                st.warning("Please fill in both fields.")
+            elif reg_user in users:
+                st.error("Username already exists! Please choose a different one or login.")
+            else:
+                save_user(reg_user, reg_pass)
+                st.success("Account created successfully! Please switch to the Login tab and sign in.")
+                
     st.stop()
 
-st.sidebar.button("🔒 Logout", key="btn_logout_main", on_click=lambda: st.session_state.update(authenticated=False))
+# Logout function
+def logout_func():
+    st.session_state.authenticated = False
+    st.session_state.username = ""
+
+st.sidebar.button("🔒 Logout", key="btn_logout_main", on_click=logout_func)
+st.sidebar.info(f"Logged in as: **{st.session_state.username}**")
+
+# --- USER-SPECIFIC PRIVATE STORAGE FOLDER ---
+USER_HISTORY_DIR = os.path.join("saved_reports", st.session_state.username)
+os.makedirs(USER_HISTORY_DIR, exist_ok=True)
 
 st.title("🌡 AI Thermal Health Assessment Dashboard")
 st.write("Upload thermal or standard images to extract temperature metrics, perform pattern classification, and export graphical reports.")
@@ -115,13 +157,13 @@ with tab1:
             pil_image.save(buf_orig, format="PNG")
             orig_img_bytes = buf_orig.getvalue()
 
-            # Save to shared server folder so anyone opening the app sees it
-            file_path = os.path.join(HISTORY_DIR, uploaded_file.name)
+            # Save specifically to this user's private folder
+            file_path = os.path.join(USER_HISTORY_DIR, uploaded_file.name)
             if not os.path.exists(file_path):
                 with open(file_path, "wb") as f:
                     f.write(orig_img_bytes)
 
-            st.toast("💾 Saved successfully to shared app storage!", icon="✅")
+            st.toast("💾 Saved successfully to your account storage!", icon="✅")
 
             hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
             lower_skin = np.array([0, 20, 70], dtype=np.uint8)
@@ -223,16 +265,16 @@ with tab1:
             st.error(f"⚠️ Error processing image: {e}")
 
 with tab2:
-    st.subheader("📂 Previous Uploads History (Shared Across Devices)")
-    if os.path.exists(HISTORY_DIR):
-        files = sorted(os.listdir(HISTORY_DIR))
+    st.subheader(f"📂 Past History for ({st.session_state.username})")
+    if os.path.exists(USER_HISTORY_DIR):
+        files = sorted(os.listdir(USER_HISTORY_DIR))
         if files:
             for file_name in files:
                 if file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
-                    img_path = os.path.join(HISTORY_DIR, file_name)
+                    img_path = os.path.join(USER_HISTORY_DIR, file_name)
                     st.image(img_path, caption=f"File: {file_name}", use_container_width=True)
         else:
-            st.info("No uploads found yet. Upload an image in 'New Assessment' to see it here!")
+            st.info("No uploads found for your account yet.")
     else:
         st.info("No history folder found.")
-        
+            
